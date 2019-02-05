@@ -45,7 +45,7 @@ const throwIfAddOrRemoveOfWrongType = (
   );
 };
 
-export default (callbacks: Callbacks) => {
+export default (callbacks: Callbacks, { getContainer = () => {} }) => {
   const entries: Entries = {
     droppables: {},
     draggables: {},
@@ -312,6 +312,7 @@ export default (callbacks: Callbacks) => {
       critical,
       entries,
       scrollOptions: request.scrollOptions,
+      getContainer,
     });
   };
 

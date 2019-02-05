@@ -4065,7 +4065,9 @@ var throwIfAddOrRemoveOfWrongType = function throwIfAddOrRemoveOfWrongType(colle
   !(collection.critical.draggable.type === descriptor.type) ? process.env.NODE_ENV !== "production" ? invariant(false, "We have detected that you have added a Draggable during a drag.\n      This is not of the same type as the dragging item\n\n      Dragging type: " + collection.critical.draggable.type + ".\n      Added type: " + descriptor.type + "\n\n      We are not allowing this as you can run into problems if your change\n      has shifted the positioning of other Droppables, or has changed the size of the page") : invariant(false) : void 0;
 };
 
-var createDimensionMarshal = (function (callbacks) {
+var createDimensionMarshal = (function (callbacks, _ref) {
+  var _ref$getContainer = _ref.getContainer,
+      getContainer = _ref$getContainer === void 0 ? function () {} : _ref$getContainer;
   var entries = {
     droppables: {},
     draggables: {}
@@ -4238,7 +4240,8 @@ var createDimensionMarshal = (function (callbacks) {
     return getInitialPublish({
       critical: critical,
       entries: entries,
-      scrollOptions: request.scrollOptions
+      scrollOptions: request.scrollOptions,
+      getContainer: getContainer
     });
   };
 

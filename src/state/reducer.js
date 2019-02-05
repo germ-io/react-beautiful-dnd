@@ -99,7 +99,7 @@ export default (state: State = idle, action: Action): State => {
     // Can only auto scroll the window if every list is not fixed on the page
     const isWindowScrollAllowed: boolean = toDroppableList(
       dimensions.droppables,
-    ).every((item: DroppableDimension) => !item.isFixedOnPage);
+    ).every((item: DroppableDimension) => !item.isFixedOnPage) || true;
 
     const result: DraggingState = {
       phase: 'DRAGGING',
@@ -318,29 +318,29 @@ export default (state: State = idle, action: Action): State => {
     });
   }
 
-  if (action.type === 'UPDATE_VIEWPORT_MAX_SCROLL') {
-    invariant(
-      isMovementAllowed(state),
-      `Cannot update viewport scroll in phase ${state.phase}`,
-    );
+  // if (action.type === 'UPDATE_VIEWPORT_MAX_SCROLL') {
+  //   invariant(
+  //     isMovementAllowed(state),
+  //     `Cannot update viewport scroll in phase ${state.phase}`,
+  //   );
 
-    const maxScroll: Position = action.payload.maxScroll;
-    const withMaxScroll: Viewport = {
-      ...state.viewport,
-      scroll: {
-        ...state.viewport.scroll,
-        max: maxScroll,
-      },
-    };
+  //   const maxScroll: Position = action.payload.maxScroll;
+  //   const withMaxScroll: Viewport = {
+  //     ...state.viewport,
+  //     scroll: {
+  //       ...state.viewport.scroll,
+  //       max: maxScroll,
+  //     },
+  //   };
 
-    // don't need to recalc any updates
-    return {
-      // phase will be overridden - appeasing flow
-      phase: 'DRAGGING',
-      ...state,
-      viewport: withMaxScroll,
-    };
-  }
+  //   // don't need to recalc any updates
+  //   return {
+  //     // phase will be overridden - appeasing flow
+  //     phase: 'DRAGGING',
+  //     ...state,
+  //     viewport: withMaxScroll,
+  //   };
+  // }
   if (
     action.type === 'MOVE_UP' ||
     action.type === 'MOVE_DOWN' ||

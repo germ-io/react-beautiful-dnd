@@ -1,5 +1,6 @@
 // @flow
 import React, { type Node } from 'react';
+import ReactDOM from 'react-dom';
 import PropTypes from 'prop-types';
 import memoizeOne from 'memoize-one';
 import invariant from 'tiny-invariant';
@@ -302,8 +303,14 @@ export default class DroppableDimensionPublisher extends React.Component<Props> 
     invariant(descriptor, 'Cannot get dimension for unpublished droppable');
     const ref: ?HTMLElement = this.props.getDroppableRef();
     invariant(ref, 'Cannot collect without a droppable ref');
-    const env: Env = getEnv(ref);
+    let env: Env = getEnv(ref);
 
+    if (env.closestScrollable && !ReactDOM.findDOMNode(this).contains(env.closestScrollable)) {
+      env = {
+        ...env,
+        closestScrollable: null,
+      }
+    }
     const dragging: WhileDragging = {
       ref,
       descriptor,

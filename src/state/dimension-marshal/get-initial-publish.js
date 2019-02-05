@@ -19,6 +19,7 @@ import type {
   Viewport,
 } from '../../types';
 import getViewport from '../../view/window/get-viewport';
+import getContainerViewport from '../../view/container/get-viewport';
 
 type Args = {|
   critical: Critical,
@@ -30,10 +31,14 @@ export default ({
   critical,
   scrollOptions,
   entries,
+  getContainer,
 }: Args): StartPublishingResult => {
   const timingKey: string = 'Initial collection from DOM';
   timings.start(timingKey);
-  const viewport: Viewport = getViewport();
+  const viewport: Viewport = getContainer()
+    ? getContainerViewport(getContainer())
+    : getViewport();
+
   const windowScroll: Position = viewport.scroll.current;
 
   const home: DroppableDescriptor = critical.droppable;

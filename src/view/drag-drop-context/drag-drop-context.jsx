@@ -10,6 +10,8 @@ import createStyleMarshal, {
 } from '../style-marshal/style-marshal';
 import canStartDrag from '../../state/can-start-drag';
 import scrollWindow from '../window/scroll-window';
+import getContainerScroll from '../container/get-container-scroll';
+import scrollContainer from '../container/scroll-container';
 import createAnnouncer from '../announcer/announcer';
 import createAutoScroller from '../../state/auto-scroller';
 import type { Announcer } from '../announcer/announcer-types';
@@ -35,11 +37,14 @@ import {
   updateDroppableIsEnabled,
   updateDroppableIsCombineEnabled,
   collectionStarting,
+  moveByWindowScroll,
 } from '../../state/action-creators';
+import throwIfRefIsInvalid from '../throw-if-invalid-inner-ref';
 import { getFormattedMessage } from '../../dev-warning';
 import { peerDependencies } from '../../../package.json';
 import checkReactVersion from './check-react-version';
 import checkDoctype from './check-doctype';
+import isMovementAllowed from '../../state/is-movement-allowed';
 
 type Props = {|
   ...Responders,
@@ -125,10 +130,10 @@ export default class DragDropContext extends React.Component<Props> {
       },
       this.store.dispatch,
     );
-    this.dimensionMarshal = createDimensionMarshal(callbacks);
+    this.dimensionMarshal = createDimensionMarshal(callbacks, { getContainer: this.getDraggableRef });
 
     this.autoScroller = createAutoScroller({
-      scrollWindow,
+      scrollWindow: this.scrollContainer,
       scrollDroppable: this.dimensionMarshal.scrollDroppable,
       ...bindActionCreators(
         {
@@ -201,6 +206,9 @@ export default class DragDropContext extends React.Component<Props> {
       this.store.dispatch(clean());
     }
 
+    if (this.ref) {
+      this.ref.removeEventListener('scroll', this.notifyScrollToWindow);
+    }
     this.styleMarshal.unmount();
     this.announcer.unmount();
   }
@@ -216,7 +224,56 @@ export default class DragDropContext extends React.Component<Props> {
 
   onWindowError = (error: Error) => this.onFatalError(error);
 
+  scrollContainer = (change) => {
+    const state: State = this.store.getState();
+    if (!isMovementAllowed(state)) {
+      return;
+    }
+    const draggableRef = this.getDraggableRef();
+
+    if (!draggableRef) {
+      return scrollWindow(change);
+    }
+    scrollContainer(draggableRef, change);
+  }
+
+  notifyScrollToWindow = (e) => {
+    const state: State = this.store.getState();
+    if (!isMovementAllowed(state)) {
+      return;
+    }
+    this.store.dispatch(moveByWindowScroll({
+      newScroll: getContainerScroll(this.ref),
+    }))
+  }
+
+  // React can call ref callback twice for every render
+  // if using an arrow function
+  setRef = (ref: ?HTMLElement) => {
+    if (ref === null) {
+      return;
+    }
+
+    if (ref === this.ref) {
+      return;
+    }
+
+    if (this.ref) {
+      this.ref.removeEventListener('scroll', this.notifyScrollToWindow);
+    }
+
+    // At this point the ref has been changed or initially populated
+
+    this.ref = ref;
+    if (this.ref) {
+      this.ref.addEventListener('scroll', this.notifyScrollToWindow);
+    }
+    throwIfRefIsInvalid(ref);
+  };
+
+  getDraggableRef = (): ?HTMLElement => this.ref;
+
   render() {
-    return this.props.children;
+    return this.props.children(this.setRef)
   }
 }

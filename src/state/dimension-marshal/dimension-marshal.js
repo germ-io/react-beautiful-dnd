@@ -46,7 +46,7 @@ const throwIfAddOrRemoveOfWrongType = (
   );
 };
 
-export default (callbacks: Callbacks, { getContainer = () => {} }) => {
+export default (callbacks: Callbacks, { getContainer = () => {} } = {}) => {
   const entries: Entries = {
     droppables: {},
     draggables: {},

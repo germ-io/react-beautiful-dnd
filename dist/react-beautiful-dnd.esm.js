@@ -1,5 +1,5 @@
 import _extends from '@babel/runtime-corejs2/helpers/esm/extends';
-import React, { useLayoutEffect, useEffect, useRef, useState, useContext } from 'react';
+import React, { useLayoutEffect, useEffect, useRef, useContext, useState } from 'react';
 import { useMemo, useCallback } from 'use-memo-one';
 import _inheritsLoose from '@babel/runtime-corejs2/helpers/esm/inheritsLoose';
 import invariant from 'tiny-invariant';
@@ -4252,9 +4252,11 @@ var throwIfAddOrRemoveOfWrongType = function throwIfAddOrRemoveOfWrongType(colle
   !(collection.critical.draggable.type === descriptor.type) ? process.env.NODE_ENV !== "production" ? invariant(false, "We have detected that you have added a Draggable during a drag.\n      This is not of the same type as the dragging item\n\n      Dragging type: " + collection.critical.draggable.type + ".\n      Added type: " + descriptor.type + "\n\n      We are not allowing this as you can run into problems if your change\n      has shifted the positioning of other Droppables, or has changed the size of the page") : invariant(false) : void 0;
 };
 
-var createDimensionMarshal = (function (callbacks, _ref) {
-  var _ref$getContainer = _ref.getContainer,
+var createDimensionMarshal = (function (callbacks, _temp) {
+  var _ref = _temp === void 0 ? {} : _temp,
+      _ref$getContainer = _ref.getContainer,
       getContainer = _ref$getContainer === void 0 ? function () {} : _ref$getContainer;
+
   var entries = {
     droppables: {},
     draggables: {}
@@ -4462,6 +4464,10 @@ var canStartDrag = (function (state, id) {
   }
 
   return state.completed.result.reason === 'DROP';
+});
+
+var scrollContainer = (function (container, change) {
+  container.scrollBy(change.x, change.y);
 });
 
 var scrollWindow = (function (change) {
@@ -5451,11 +5457,10 @@ function getStore(lazyRef) {
 }
 
 function App(props) {
-  var _this = this;
-
   var uniqueId = props.uniqueId,
       setOnError = props.setOnError;
   var lazyStoreRef = useRef(null);
+  var draggableRef = useRef(null);
   useStartupValidation();
   var lastPropsRef = usePrevious(props);
   var getResponders = useCallback(function () {
@@ -5475,12 +5480,30 @@ function App(props) {
       collectionStarting: collectionStarting
     }, lazyDispatch);
   }, [lazyDispatch]);
+  var getDraggableRef = useCallback(function () {
+    return draggableRef.current;
+  });
   var dimensionMarshal = useMemo(function () {
-    return createDimensionMarshal(callbacks);
-  }, [callbacks]);
+    return createDimensionMarshal(callbacks, {
+      getContainer: getDraggableRef
+    });
+  }, [callbacks, getDraggableRef]);
+  var modifiedScrollWondow = useCallback(function (change) {
+    var current = getStore(lazyStoreRef);
+
+    if (!getIsMovementAllowed()) {
+      return;
+    }
+
+    if (!draggableRef.current) {
+      return scrollWindow(change);
+    }
+
+    scrollContainer(draggableRef.current, change);
+  });
   var autoScroller = useMemo(function () {
     return createAutoScroller(_extends({
-      scrollWindow: scrollWindow,
+      scrollWindow: modifiedScrollWondow,
       scrollDroppable: dimensionMarshal.scrollDroppable
     }, bindActionCreators({
       move: move
@@ -5528,11 +5551,6 @@ function App(props) {
       isMovementAllowed: getIsMovementAllowed
     };
   }, [dimensionMarshal, getCanLift, getIsMovementAllowed, styleMarshal.styleContext]);
-
-  var _useState = useState(null),
-      currentRef = _useState[0],
-      setRef = _useState[1];
-
   var notifyScrollToWindow = useCallback(function () {
     var current = getStore(lazyStoreRef);
 
@@ -5540,9 +5558,8 @@ function App(props) {
       return;
     }
 
-    debugger;
     current.dispatch(moveByWindowScroll({
-      newScroll: getContainerScroll(currentRef)
+      newScroll: getContainerScroll(draggableRef.current)
     }));
   });
   var measuredRef = useCallback(function (ref) {
@@ -5550,18 +5567,18 @@ function App(props) {
       return;
     }
 
-    if (ref === currentRef) {
+    if (ref === draggableRef.current) {
       return;
     }
 
-    if (currentRef) {
-      currentRef.removeEventListener('scroll', notifyScrollToWindow);
+    if (draggableRef.current) {
+      draggableRef.current.removeEventListener('scroll', notifyScrollToWindow);
     }
 
-    setRef(ref);
+    draggableRef.current = ref;
 
     if (ref) {
-      ref.addEventListener('scroll', _this.notifyScrollToWindow);
+      ref.addEventListener('scroll', notifyScrollToWindow);
     }
 
     throwIfRefIsInvalid(ref);

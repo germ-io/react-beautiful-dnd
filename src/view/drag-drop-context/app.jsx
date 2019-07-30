@@ -7,6 +7,7 @@ import { useMemo, useCallback } from 'use-memo-one';
 import createStore from '../../state/create-store';
 import createDimensionMarshal from '../../state/dimension-marshal/dimension-marshal';
 import canStartDrag from '../../state/can-start-drag';
+import scrollContainer from '../container/scroll-container';
 import scrollWindow from '../window/scroll-window';
 import createAutoScroller from '../../state/auto-scroller';
 import useStyleMarshal from '../use-style-marshal/use-style-marshal';
@@ -65,6 +66,7 @@ function getStore(lazyRef: LazyStoreRef): Store {
 export default function App(props: Props) {
   const { uniqueId, setOnError } = props;
   const lazyStoreRef: LazyStoreRef = useRef<?Store>(null);
+  const draggableRef = useRef(null);
 
   useStartupValidation();
 
@@ -97,15 +99,32 @@ export default function App(props: Props) {
       ),
     [lazyDispatch],
   );
+
+  const getDraggableRef = useCallback(() => {
+    return draggableRef.current;
+  });
+
   const dimensionMarshal: DimensionMarshal = useMemo<DimensionMarshal>(
-    () => createDimensionMarshal(callbacks),
-    [callbacks],
+    () => createDimensionMarshal(callbacks, { getContainer: getDraggableRef }),
+    [callbacks, getDraggableRef],
   );
+
+  const modifiedScrollWondow = useCallback((change) => {
+    const current: Store = getStore(lazyStoreRef);
+    if (!getIsMovementAllowed()) {
+      return;
+    }
+
+    if (!draggableRef.current) {
+      return scrollWindow(change);
+    }
+    scrollContainer(draggableRef.current, change);
+  });
 
   const autoScroller: AutoScroller = useMemo<AutoScroller>(
     () =>
       createAutoScroller({
-        scrollWindow,
+        scrollWindow: modifiedScrollWondow,
         scrollDroppable: dimensionMarshal.scrollDroppable,
         ...bindActionCreators(
           {
@@ -176,17 +195,15 @@ export default function App(props: Props) {
       styleMarshal.styleContext,
     ],
   );
-  const [currentRef, setRef] = useState(null);
 
   const notifyScrollToWindow = useCallback(() => {
     const current: Store = getStore(lazyStoreRef);
     if (!getIsMovementAllowed()) {
       return;
     }
-    debugger
     current.dispatch(
       moveByWindowScroll({
-        newScroll: getContainerScroll(currentRef),
+        newScroll: getContainerScroll(draggableRef.current),
       }),
     )
   });
@@ -196,19 +213,19 @@ export default function App(props: Props) {
       return;
     }
 
-    if (ref === currentRef) {
+    if (ref === draggableRef.current) {
       return;
     }
 
-    if (currentRef) {
-      currentRef.removeEventListener('scroll', notifyScrollToWindow);
+    if (draggableRef.current) {
+      draggableRef.current.removeEventListener('scroll', notifyScrollToWindow);
     }
 
     // At this point the ref has been changed or initially populated
 
-    setRef(ref);
+    draggableRef.current = ref;
     if (ref) {
-      ref.addEventListener('scroll', this.notifyScrollToWindow);
+      ref.addEventListener('scroll', notifyScrollToWindow);
     }
     throwIfRefIsInvalid(ref);
   });

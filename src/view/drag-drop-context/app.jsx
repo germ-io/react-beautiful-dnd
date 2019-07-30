@@ -1,5 +1,5 @@
 // @flow
-import React, { useEffect, useRef, type Node } from 'react';
+import React, { useEffect, useRef, useState, type Node } from 'react';
 import invariant from 'tiny-invariant';
 import { bindActionCreators } from 'redux';
 import { Provider } from 'react-redux';
@@ -7,9 +7,11 @@ import { useMemo, useCallback } from 'use-memo-one';
 import createStore from '../../state/create-store';
 import createDimensionMarshal from '../../state/dimension-marshal/dimension-marshal';
 import canStartDrag from '../../state/can-start-drag';
+import scrollContainer from '../container/scroll-container';
 import scrollWindow from '../window/scroll-window';
 import createAutoScroller from '../../state/auto-scroller';
 import useStyleMarshal from '../use-style-marshal/use-style-marshal';
+import throwIfRefIsInvalid from '../throw-if-invalid-inner-ref';
 import type { AutoScroller } from '../../state/auto-scroller/auto-scroller-types';
 import type { StyleMarshal } from '../use-style-marshal/style-marshal-types';
 import type {
@@ -27,6 +29,7 @@ import {
   updateDroppableIsEnabled,
   updateDroppableIsCombineEnabled,
   collectionStarting,
+  moveByWindowScroll,
 } from '../../state/action-creators';
 import isMovementAllowed from '../../state/is-movement-allowed';
 import useAnnouncer from '../use-announcer';
@@ -34,6 +37,7 @@ import AppContext, { type AppContextValue } from '../context/app-context';
 import useStartupValidation from './use-startup-validation';
 import usePrevious from '../use-previous-ref';
 import { warning } from '../../dev-warning';
+import getContainerScroll from '../container/get-container-scroll';
 
 type Props = {|
   ...Responders,
@@ -62,6 +66,7 @@ function getStore(lazyRef: LazyStoreRef): Store {
 export default function App(props: Props) {
   const { uniqueId, setOnError } = props;
   const lazyStoreRef: LazyStoreRef = useRef<?Store>(null);
+  const draggableRef = useRef(null);
 
   useStartupValidation();
 
@@ -94,15 +99,32 @@ export default function App(props: Props) {
       ),
     [lazyDispatch],
   );
+
+  const getDraggableRef = useCallback(() => {
+    return draggableRef.current;
+  });
+
   const dimensionMarshal: DimensionMarshal = useMemo<DimensionMarshal>(
-    () => createDimensionMarshal(callbacks),
-    [callbacks],
+    () => createDimensionMarshal(callbacks, { getContainer: getDraggableRef }),
+    [callbacks, getDraggableRef],
   );
+
+  const modifiedScrollWondow = useCallback((change) => {
+    const current: Store = getStore(lazyStoreRef);
+    if (!getIsMovementAllowed()) {
+      return;
+    }
+
+    if (!draggableRef.current) {
+      return scrollWindow(change);
+    }
+    scrollContainer(draggableRef.current, change);
+  });
 
   const autoScroller: AutoScroller = useMemo<AutoScroller>(
     () =>
       createAutoScroller({
-        scrollWindow,
+        scrollWindow: modifiedScrollWondow,
         scrollDroppable: dimensionMarshal.scrollDroppable,
         ...bindActionCreators(
           {
@@ -174,6 +196,40 @@ export default function App(props: Props) {
     ],
   );
 
+  const notifyScrollToWindow = useCallback(() => {
+    const current: Store = getStore(lazyStoreRef);
+    if (!getIsMovementAllowed()) {
+      return;
+    }
+    current.dispatch(
+      moveByWindowScroll({
+        newScroll: getContainerScroll(draggableRef.current),
+      }),
+    )
+  });
+  
+  const measuredRef = useCallback(ref => {
+    if (ref === null) {
+      return;
+    }
+
+    if (ref === draggableRef.current) {
+      return;
+    }
+
+    if (draggableRef.current) {
+      draggableRef.current.removeEventListener('scroll', notifyScrollToWindow);
+    }
+
+    // At this point the ref has been changed or initially populated
+
+    draggableRef.current = ref;
+    if (ref) {
+      ref.addEventListener('scroll', notifyScrollToWindow);
+    }
+    throwIfRefIsInvalid(ref);
+  });
+
   // Clean store when unmounting
   useEffect(() => {
     return tryResetStore;
@@ -182,7 +238,7 @@ export default function App(props: Props) {
   return (
     <AppContext.Provider value={appContext}>
       <Provider context={StoreContext} store={store}>
-        {props.children}
+        {props.children(measuredRef)}
       </Provider>
     </AppContext.Provider>
   );

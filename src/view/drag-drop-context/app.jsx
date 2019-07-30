@@ -125,6 +125,10 @@ export default function App(props: Props) {
 
   const registry: Registry = useRegistry();
 
+  const getDraggableRef = () => {
+    return draggableRef.current;
+  }
+
   const dimensionMarshal: DimensionMarshal = useMemo<DimensionMarshal>(() => {
     return createDimensionMarshal(registry, callbacks, { getContainer: getDraggableRef });
   }, [registry, callbacks, getDraggableRef]);

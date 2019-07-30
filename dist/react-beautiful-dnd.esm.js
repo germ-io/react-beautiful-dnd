@@ -1,17 +1,18 @@
 import _extends from '@babel/runtime-corejs2/helpers/esm/extends';
-import React, { useLayoutEffect, useEffect, useRef, useContext, useState } from 'react';
+import React, { useLayoutEffect, useEffect, useRef, useState, useContext } from 'react';
 import { useMemo, useCallback } from 'use-memo-one';
 import _inheritsLoose from '@babel/runtime-corejs2/helpers/esm/inheritsLoose';
 import invariant from 'tiny-invariant';
 import { createStore as createStore$1, applyMiddleware, compose, bindActionCreators } from 'redux';
 import { Provider, connect } from 'react-redux';
-import { getRect, expand, offset, withScroll, createBox, getBox, calculateBox } from 'css-box-model';
+import { getRect, expand, offset, withScroll, getBox, createBox, calculateBox } from 'css-box-model';
 import memoizeOne from 'memoize-one';
 import _Object$values from '@babel/runtime-corejs2/core-js/object/values';
 import _Object$keys from '@babel/runtime-corejs2/core-js/object/keys';
-import _Date$now from '@babel/runtime-corejs2/core-js/date/now';
 import rafSchd from 'raf-schd';
+import _Date$now from '@babel/runtime-corejs2/core-js/date/now';
 import _Object$assign from '@babel/runtime-corejs2/core-js/object/assign';
+import ReactDOM from 'react-dom';
 import _Number$isInteger from '@babel/runtime-corejs2/core-js/number/is-integer';
 
 var isProduction = process.env.NODE_ENV === 'production';
@@ -119,6 +120,84 @@ var ErrorBoundary = function (_React$Component) {
   return ErrorBoundary;
 }(React.Component);
 
+var liftInstruction = "Draggable item. Ensure your screen reader is not in browse mode and then press spacebar to lift.";
+
+var position = function position(index) {
+  return index + 1;
+};
+
+var onDragStart = function onDragStart(start) {
+  return "\n  You have lifted an item in position " + position(start.source.index) + ".\n  Use the arrow keys to move, space bar to drop, and escape to cancel.\n";
+};
+
+var withLocation = function withLocation(source, destination) {
+  var isInHomeList = source.droppableId === destination.droppableId;
+  var startPosition = position(source.index);
+  var endPosition = position(destination.index);
+
+  if (isInHomeList) {
+    return "\n      You have moved the item from position " + startPosition + "\n      to position " + endPosition + "\n    ";
+  }
+
+  return "\n    You have moved the item from position " + startPosition + "\n    in list " + source.droppableId + "\n    to list " + destination.droppableId + "\n    in position " + endPosition + "\n  ";
+};
+
+var withCombine = function withCombine(id, source, combine) {
+  var inHomeList = source.droppableId === combine.droppableId;
+
+  if (inHomeList) {
+    return "\n      The item " + id + "\n      has been combined with " + combine.draggableId;
+  }
+
+  return "\n      The item " + id + "\n      in list " + source.droppableId + "\n      has been combined with " + combine.draggableId + "\n      in list " + combine.droppableId + "\n    ";
+};
+
+var onDragUpdate = function onDragUpdate(update) {
+  var location = update.destination;
+
+  if (location) {
+    return withLocation(update.source, location);
+  }
+
+  var combine = update.combine;
+
+  if (combine) {
+    return withCombine(update.draggableId, update.source, combine);
+  }
+
+  return 'You are over an area that cannot be dropped on';
+};
+
+var returnedToStart = function returnedToStart(source) {
+  return "\n  The item has returned to its starting position\n  of " + position(source.index) + "\n";
+};
+
+var onDragEnd = function onDragEnd(result) {
+  if (result.reason === 'CANCEL') {
+    return "\n      Movement cancelled.\n      " + returnedToStart(result.source) + "\n    ";
+  }
+
+  var location = result.destination;
+  var combine = result.combine;
+
+  if (location) {
+    return "\n      You have dropped the item.\n      " + withLocation(result.source, location) + "\n    ";
+  }
+
+  if (combine) {
+    return "\n      You have dropped the item.\n      " + withCombine(result.draggableId, result.source, combine) + "\n    ";
+  }
+
+  return "\n    The item has been dropped while not over a drop area.\n    " + returnedToStart(result.source) + "\n  ";
+};
+
+var preset = {
+  liftInstruction: liftInstruction,
+  onDragStart: onDragStart,
+  onDragUpdate: onDragUpdate,
+  onDragEnd: onDragEnd
+};
+
 var origin = {
   x: 0,
   y: 0
@@ -185,9 +264,6 @@ var executeClip = (function (frame, subject) {
   return result;
 });
 
-var isEqual$1 = function isEqual(first, second) {
-  return first.top === second.top && first.right === second.right && first.bottom === second.bottom && first.left === second.left;
-};
 var offsetByPosition = function offsetByPosition(spacing, point) {
   return {
     top: spacing.top + point.y,
@@ -351,18 +427,17 @@ var finish = function finish(key) {
 };
 
 var whatIsDraggedOver = (function (impact) {
-  var merge = impact.merge,
-      destination = impact.destination;
+  var at = impact.at;
 
-  if (destination) {
-    return destination.droppableId;
+  if (!at) {
+    return null;
   }
 
-  if (merge) {
-    return merge.combine.droppableId;
+  if (at.type === 'REORDER') {
+    return at.destination.droppableId;
   }
 
-  return null;
+  return at.combine.droppableId;
 });
 
 function values(map) {
@@ -393,6 +468,9 @@ function find(list, predicate) {
   }
 
   return undefined;
+}
+function toArray(list) {
+  return Array.prototype.slice.call(list);
 }
 
 var toDroppableMap = memoizeOne(function (droppables) {
@@ -493,113 +571,42 @@ var isUserMovingForward = (function (axis, direction) {
   return axis === vertical ? direction.vertical === 'down' : direction.horizontal === 'right';
 });
 
-var didStartDisplaced = (function (draggableId, onLift) {
-  return Boolean(onLift.wasDisplaced[draggableId]);
-});
-
-var getCombinedItemDisplacement = (function (_ref) {
-  var displaced = _ref.displaced,
-      onLift = _ref.onLift,
-      combineWith = _ref.combineWith,
-      displacedBy = _ref.displacedBy;
-  var isDisplaced = Boolean(displaced[combineWith]);
-
-  if (didStartDisplaced(combineWith, onLift)) {
-    return isDisplaced ? origin : negate(displacedBy.point);
-  }
-
-  return isDisplaced ? displacedBy.point : origin;
-});
-
-var getWhenEntered = function getWhenEntered(id, current, oldMerge) {
-  if (!oldMerge) {
-    return current;
-  }
-
-  if (id !== oldMerge.combine.draggableId) {
-    return current;
-  }
-
-  return oldMerge.whenEntered;
-};
-
-var isCombiningWith = function isCombiningWith(_ref) {
-  var id = _ref.id,
-      currentCenter = _ref.currentCenter,
-      axis = _ref.axis,
-      borderBox = _ref.borderBox,
-      displaceBy = _ref.displaceBy,
-      currentUserDirection = _ref.currentUserDirection,
-      oldMerge = _ref.oldMerge;
-  var start = borderBox[axis.start] + displaceBy[axis.line];
-  var end = borderBox[axis.end] + displaceBy[axis.line];
-  var size = borderBox[axis.size];
-  var twoThirdsOfSize = size * 0.666;
-  var whenEntered = getWhenEntered(id, currentUserDirection, oldMerge);
-  var isMovingForward = isUserMovingForward(axis, whenEntered);
-  var targetCenter = currentCenter[axis.line];
-
-  if (isMovingForward) {
-    return isWithin(start, start + twoThirdsOfSize)(targetCenter);
-  }
-
-  return isWithin(end - twoThirdsOfSize, end)(targetCenter);
-};
-
-var getCombineImpact = (function (_ref2) {
-  var currentCenter = _ref2.pageBorderBoxCenterWithDroppableScrollChange,
-      previousImpact = _ref2.previousImpact,
-      destination = _ref2.destination,
-      insideDestinationWithoutDraggable = _ref2.insideDestinationWithoutDraggable,
-      userDirection = _ref2.userDirection,
-      onLift = _ref2.onLift;
-
-  if (!destination.isCombineEnabled) {
-    return null;
-  }
-
-  var axis = destination.axis;
-  var map = previousImpact.movement.map;
-  var canBeDisplacedBy = previousImpact.movement.displacedBy;
-  var oldMerge = previousImpact.merge;
-  var target = find(insideDestinationWithoutDraggable, function (child) {
-    var id = child.descriptor.id;
-    var displaceBy = getCombinedItemDisplacement({
-      displaced: map,
-      onLift: onLift,
-      combineWith: id,
-      displacedBy: canBeDisplacedBy
-    });
-    return isCombiningWith({
-      id: id,
-      currentCenter: currentCenter,
-      axis: axis,
-      borderBox: child.page.borderBox,
-      displaceBy: displaceBy,
-      currentUserDirection: userDirection,
-      oldMerge: oldMerge
-    });
-  });
-
-  if (!target) {
-    return null;
-  }
-
-  var merge = {
-    whenEntered: getWhenEntered(target.descriptor.id, userDirection, oldMerge),
-    combine: {
-      draggableId: target.descriptor.id,
-      droppableId: destination.descriptor.id
-    }
+var getDisplacedBy = memoizeOne(function getDisplacedBy(axis, displaceBy) {
+  var displacement = displaceBy[axis.line];
+  return {
+    value: displacement,
+    point: patch(axis.line, displacement)
   };
-
-  var withMerge = _extends({}, previousImpact, {
-    destination: null,
-    merge: merge
-  });
-
-  return withMerge;
 });
+
+var removeDraggableFromList = memoizeOne(function (remove, list) {
+  return list.filter(function (item) {
+    return item.descriptor.id !== remove.descriptor.id;
+  });
+});
+
+var isHomeOf = (function (draggable, destination) {
+  return draggable.descriptor.droppableId === destination.descriptor.id;
+});
+
+function didStartAfterCritical(draggableId, afterCritical) {
+  return Boolean(afterCritical.effected[draggableId]);
+}
+
+var noDisplacedBy = {
+  point: origin,
+  value: 0
+};
+var emptyGroups = {
+  invisible: {},
+  visible: {},
+  all: []
+};
+var noImpact = {
+  displaced: emptyGroups,
+  displacedBy: noDisplacedBy,
+  at: null
+};
 
 var isPartiallyVisibleThroughFrame = (function (frame) {
   var isWithinVertical = isWithin(frame.top, frame.bottom);
@@ -698,155 +705,377 @@ var isTotallyVisibleOnAxis = function isTotallyVisibleOnAxis(args) {
   }));
 };
 
-var getShouldAnimate = function getShouldAnimate(forceShouldAnimate, isVisible, previous) {
+var getShouldAnimate = function getShouldAnimate(id, last, forceShouldAnimate) {
   if (typeof forceShouldAnimate === 'boolean') {
     return forceShouldAnimate;
   }
 
-  if (!isVisible) {
-    return false;
-  }
-
-  if (!previous) {
+  if (!last) {
     return true;
   }
 
-  return previous.shouldAnimate;
-};
+  var invisible = last.invisible,
+      visible = last.visible;
 
-var getTarget = function getTarget(draggable, onLift) {
-  var marginBox = draggable.page.marginBox;
-
-  if (!didStartDisplaced(draggable.descriptor.id, onLift)) {
-    return marginBox;
+  if (invisible[id]) {
+    return false;
   }
 
-  var expandBy = {
-    top: onLift.displacedBy.point.y,
-    right: 0,
-    bottom: 0,
-    left: onLift.displacedBy.point.x
-  };
-  return getRect(expand(marginBox, expandBy));
+  var previous = visible[id];
+  return previous ? previous.shouldAnimate : true;
 };
 
-var getDisplacement = (function (_ref) {
-  var draggable = _ref.draggable,
+function getTarget(draggable, displacedBy) {
+  var marginBox = draggable.page.marginBox;
+  var expandBy = {
+    top: displacedBy.point.y,
+    right: 0,
+    bottom: 0,
+    left: displacedBy.point.x
+  };
+  return getRect(expand(marginBox, expandBy));
+}
+
+function getDisplacementGroups(_ref) {
+  var afterDragging = _ref.afterDragging,
       destination = _ref.destination,
-      previousImpact = _ref.previousImpact,
+      displacedBy = _ref.displacedBy,
       viewport = _ref.viewport,
-      onLift = _ref.onLift,
-      forceShouldAnimate = _ref.forceShouldAnimate;
-  var id = draggable.descriptor.id;
-  var map = previousImpact.movement.map;
-  var target = getTarget(draggable, onLift);
-  var isVisible = isPartiallyVisible({
-    target: target,
-    destination: destination,
-    viewport: viewport,
-    withDroppableDisplacement: true
+      forceShouldAnimate = _ref.forceShouldAnimate,
+      last = _ref.last;
+  return afterDragging.reduce(function process(groups, draggable) {
+    var target = getTarget(draggable, displacedBy);
+    var id = draggable.descriptor.id;
+    groups.all.push(id);
+    var isVisible = isPartiallyVisible({
+      target: target,
+      destination: destination,
+      viewport: viewport,
+      withDroppableDisplacement: true
+    });
+
+    if (!isVisible) {
+      groups.invisible[draggable.descriptor.id] = true;
+      return groups;
+    }
+
+    var shouldAnimate = getShouldAnimate(id, last, forceShouldAnimate);
+    var displacement = {
+      draggableId: id,
+      shouldAnimate: shouldAnimate
+    };
+    groups.visible[id] = displacement;
+    return groups;
+  }, {
+    all: [],
+    visible: {},
+    invisible: {}
   });
-  var shouldAnimate = getShouldAnimate(forceShouldAnimate, isVisible, map[id]);
-  var displacement = {
-    draggableId: id,
-    isVisible: isVisible,
-    shouldAnimate: shouldAnimate
-  };
-  return displacement;
-});
+}
 
-var getDisplacementMap = memoizeOne(function (displaced) {
-  return displaced.reduce(function (map, displacement) {
-    map[displacement.draggableId] = displacement;
-    return map;
-  }, {});
-});
+function getIndexOfLastItem(draggables, options) {
+  if (!draggables.length) {
+    return 0;
+  }
 
-var getDisplacedBy = memoizeOne(function (axis, displaceBy) {
-  var displacement = displaceBy[axis.line];
+  var indexOfLastItem = draggables[draggables.length - 1].descriptor.index;
+  return options.inHomeList ? indexOfLastItem : indexOfLastItem + 1;
+}
+
+function goAtEnd(_ref) {
+  var insideDestination = _ref.insideDestination,
+      inHomeList = _ref.inHomeList,
+      displacedBy = _ref.displacedBy,
+      destination = _ref.destination;
+  var newIndex = getIndexOfLastItem(insideDestination, {
+    inHomeList: inHomeList
+  });
   return {
-    value: displacement,
-    point: patch(axis.line, displacement)
+    displaced: emptyGroups,
+    displacedBy: displacedBy,
+    at: {
+      type: 'REORDER',
+      destination: {
+        droppableId: destination.descriptor.id,
+        index: newIndex
+      }
+    }
   };
-});
+}
 
-var getReorderImpact = (function (_ref) {
-  var currentCenter = _ref.pageBorderBoxCenterWithDroppableScrollChange,
-      draggable = _ref.draggable,
-      destination = _ref.destination,
-      insideDestinationWithoutDraggable = _ref.insideDestinationWithoutDraggable,
-      previousImpact = _ref.previousImpact,
-      viewport = _ref.viewport,
-      userDirection = _ref.userDirection,
-      onLift = _ref.onLift;
+function calculateReorderImpact(_ref2) {
+  var draggable = _ref2.draggable,
+      insideDestination = _ref2.insideDestination,
+      destination = _ref2.destination,
+      viewport = _ref2.viewport,
+      displacedBy = _ref2.displacedBy,
+      last = _ref2.last,
+      index = _ref2.index,
+      forceShouldAnimate = _ref2.forceShouldAnimate;
+  var inHomeList = isHomeOf(draggable, destination);
+
+  if (index == null) {
+    return goAtEnd({
+      insideDestination: insideDestination,
+      inHomeList: inHomeList,
+      displacedBy: displacedBy,
+      destination: destination
+    });
+  }
+
+  var match = find(insideDestination, function (item) {
+    return item.descriptor.index === index;
+  });
+
+  if (!match) {
+    return goAtEnd({
+      insideDestination: insideDestination,
+      inHomeList: inHomeList,
+      displacedBy: displacedBy,
+      destination: destination
+    });
+  }
+
+  var withoutDragging = removeDraggableFromList(draggable, insideDestination);
+  var sliceFrom = insideDestination.indexOf(match);
+  var impacted = withoutDragging.slice(sliceFrom);
+  var displaced = getDisplacementGroups({
+    afterDragging: impacted,
+    destination: destination,
+    displacedBy: displacedBy,
+    last: last,
+    viewport: viewport.frame,
+    forceShouldAnimate: forceShouldAnimate
+  });
+  return {
+    displaced: displaced,
+    displacedBy: displacedBy,
+    at: {
+      type: 'REORDER',
+      destination: {
+        droppableId: destination.descriptor.id,
+        index: index
+      }
+    }
+  };
+}
+
+function atIndex(_ref) {
+  var draggable = _ref.draggable,
+      closest = _ref.closest,
+      inHomeList = _ref.inHomeList;
+
+  if (!closest) {
+    return null;
+  }
+
+  if (!inHomeList) {
+    return closest.descriptor.index;
+  }
+
+  if (closest.descriptor.index > draggable.descriptor.index) {
+    return closest.descriptor.index - 1;
+  }
+
+  return closest.descriptor.index;
+}
+
+var getReorderImpact = (function (_ref2) {
+  var currentCenter = _ref2.pageBorderBoxCenterWithDroppableScrollChange,
+      draggable = _ref2.draggable,
+      destination = _ref2.destination,
+      insideDestination = _ref2.insideDestination,
+      last = _ref2.last,
+      viewport = _ref2.viewport,
+      userDirection = _ref2.userDirection,
+      afterCritical = _ref2.afterCritical;
   var axis = destination.axis;
   var isMovingForward = isUserMovingForward(destination.axis, userDirection);
   var displacedBy = getDisplacedBy(destination.axis, draggable.displaceBy);
   var targetCenter = currentCenter[axis.line];
   var displacement = displacedBy.value;
-  var displaced = insideDestinationWithoutDraggable.filter(function (child) {
+  var withoutDragging = removeDraggableFromList(draggable, insideDestination);
+  var closest = find(withoutDragging, function (child) {
+    var id = child.descriptor.id;
     var borderBox = child.page.borderBox;
     var start = borderBox[axis.start];
     var end = borderBox[axis.end];
-    var didStartDisplaced$1 = didStartDisplaced(child.descriptor.id, onLift);
+    var didStartAfterCritical$1 = didStartAfterCritical(id, afterCritical);
 
     if (isMovingForward) {
-      if (didStartDisplaced$1) {
+      if (didStartAfterCritical$1) {
         return targetCenter < start;
       }
 
       return targetCenter < start + displacement;
     }
 
-    if (didStartDisplaced$1) {
+    if (didStartAfterCritical$1) {
       return targetCenter <= end - displacement;
     }
 
     return targetCenter <= end;
-  }).map(function (dimension) {
-    return getDisplacement({
-      draggable: dimension,
-      destination: destination,
-      previousImpact: previousImpact,
-      viewport: viewport.frame,
-      onLift: onLift
-    });
   });
-  var newIndex = insideDestinationWithoutDraggable.length - displaced.length;
-  var movement = {
+  var newIndex = atIndex({
+    draggable: draggable,
+    closest: closest,
+    inHomeList: isHomeOf(draggable, destination)
+  });
+  return calculateReorderImpact({
+    draggable: draggable,
+    insideDestination: insideDestination,
+    destination: destination,
+    viewport: viewport,
+    last: last,
     displacedBy: displacedBy,
-    displaced: displaced,
-    map: getDisplacementMap(displaced)
-  };
-  var impact = {
-    movement: movement,
-    destination: {
-      droppableId: destination.descriptor.id,
-      index: newIndex
-    },
-    merge: null
-  };
-  return impact;
+    index: newIndex
+  });
 });
 
-var noDisplacedBy = {
-  point: origin,
-  value: 0
-};
-var noMovement = {
-  displaced: [],
-  map: {},
-  displacedBy: noDisplacedBy
-};
-var noImpact = {
-  movement: noMovement,
-  destination: null,
-  merge: null
+var getCombinedItemDisplacement = (function (_ref) {
+  var displaced = _ref.displaced,
+      afterCritical = _ref.afterCritical,
+      combineWith = _ref.combineWith,
+      displacedBy = _ref.displacedBy;
+  var isDisplaced = Boolean(displaced.visible[combineWith] || displaced.invisible[combineWith]);
+
+  if (didStartAfterCritical(combineWith, afterCritical)) {
+    return isDisplaced ? origin : negate(displacedBy.point);
+  }
+
+  return isDisplaced ? displacedBy.point : origin;
+});
+
+function getWhenEntered(id, current, lastCombineImpact) {
+  if (!lastCombineImpact) {
+    return current;
+  }
+
+  if (id !== lastCombineImpact.combine.draggableId) {
+    return current;
+  }
+
+  return lastCombineImpact.whenEntered;
+}
+
+function tryGetCombineImpact(impact) {
+  if (impact.at && impact.at.type === 'COMBINE') {
+    return impact.at;
+  }
+
+  return null;
+}
+
+function calculateCombineImpact(_ref) {
+  var combineWithId = _ref.combineWithId,
+      destinationId = _ref.destinationId,
+      userDirection = _ref.userDirection,
+      previousImpact = _ref.previousImpact;
+  var lastCombineImpact = tryGetCombineImpact(previousImpact);
+  var whenEntered = getWhenEntered(combineWithId, userDirection, lastCombineImpact);
+  var impact = {
+    displacedBy: previousImpact.displacedBy,
+    displaced: previousImpact.displaced,
+    at: {
+      type: 'COMBINE',
+      whenEntered: whenEntered,
+      combine: {
+        draggableId: combineWithId,
+        droppableId: destinationId
+      }
+    }
+  };
+  return impact;
+}
+
+function getWhenEntered$1(id, current, lastCombineImpact) {
+  if (!lastCombineImpact) {
+    return current;
+  }
+
+  if (id !== lastCombineImpact.combine.draggableId) {
+    return current;
+  }
+
+  return lastCombineImpact.whenEntered;
+}
+
+var isCombiningWith = function isCombiningWith(_ref) {
+  var id = _ref.id,
+      currentCenter = _ref.currentCenter,
+      axis = _ref.axis,
+      borderBox = _ref.borderBox,
+      displaceBy = _ref.displaceBy,
+      currentUserDirection = _ref.currentUserDirection,
+      lastCombineImpact = _ref.lastCombineImpact;
+  var start = borderBox[axis.start] + displaceBy[axis.line];
+  var end = borderBox[axis.end] + displaceBy[axis.line];
+  var size = borderBox[axis.size];
+  var twoThirdsOfSize = size * 0.666;
+  var whenEntered = getWhenEntered$1(id, currentUserDirection, lastCombineImpact);
+  var isMovingForward = isUserMovingForward(axis, whenEntered);
+  var targetCenter = currentCenter[axis.line];
+
+  if (isMovingForward) {
+    return isWithin(start, start + twoThirdsOfSize)(targetCenter);
+  }
+
+  return isWithin(end - twoThirdsOfSize, end)(targetCenter);
 };
 
-var removeDraggableFromList = memoizeOne(function (remove, list) {
-  return list.filter(function (item) {
-    return item.descriptor.id !== remove.descriptor.id;
+function tryGetCombineImpact$1(impact) {
+  if (impact.at && impact.at.type === 'COMBINE') {
+    return impact.at;
+  }
+
+  return null;
+}
+
+var getCombineImpact = (function (_ref2) {
+  var draggable = _ref2.draggable,
+      currentCenter = _ref2.pageBorderBoxCenterWithDroppableScrollChange,
+      previousImpact = _ref2.previousImpact,
+      destination = _ref2.destination,
+      insideDestination = _ref2.insideDestination,
+      userDirection = _ref2.userDirection,
+      afterCritical = _ref2.afterCritical;
+
+  if (!destination.isCombineEnabled) {
+    return null;
+  }
+
+  var axis = destination.axis;
+  var displaced = previousImpact.displaced;
+  var canBeDisplacedBy = previousImpact.displacedBy;
+  var lastCombineImpact = tryGetCombineImpact$1(previousImpact);
+  var combineWith = find(removeDraggableFromList(draggable, insideDestination), function (child) {
+    var id = child.descriptor.id;
+    var displaceBy = getCombinedItemDisplacement({
+      displaced: displaced,
+      afterCritical: afterCritical,
+      combineWith: id,
+      displacedBy: canBeDisplacedBy
+    });
+    return isCombiningWith({
+      id: id,
+      currentCenter: currentCenter,
+      axis: axis,
+      borderBox: child.page.borderBox,
+      displaceBy: displaceBy,
+      currentUserDirection: userDirection,
+      lastCombineImpact: lastCombineImpact
+    });
+  });
+
+  if (!combineWith) {
+    return null;
+  }
+
+  return calculateCombineImpact({
+    combineWithId: combineWith.descriptor.id,
+    destinationId: destination.descriptor.id,
+    previousImpact: previousImpact,
+    userDirection: userDirection
   });
 });
 
@@ -858,7 +1087,7 @@ var getDragImpact = (function (_ref) {
       previousImpact = _ref.previousImpact,
       viewport = _ref.viewport,
       userDirection = _ref.userDirection,
-      onLift = _ref.onLift;
+      afterCritical = _ref.afterCritical;
   var destinationId = getDroppableOver({
     target: pageBorderBoxCenter,
     droppables: droppables
@@ -870,30 +1099,24 @@ var getDragImpact = (function (_ref) {
 
   var destination = droppables[destinationId];
   var insideDestination = getDraggablesInsideDroppable(destination.descriptor.id, draggables);
-  var insideDestinationWithoutDraggable = removeDraggableFromList(draggable, insideDestination);
   var pageBorderBoxCenterWithDroppableScrollChange = withDroppableScroll(destination, pageBorderBoxCenter);
-  var withMerge = getCombineImpact({
+  return getCombineImpact({
     pageBorderBoxCenterWithDroppableScrollChange: pageBorderBoxCenterWithDroppableScrollChange,
-    previousImpact: previousImpact,
-    destination: destination,
-    insideDestinationWithoutDraggable: insideDestinationWithoutDraggable,
-    userDirection: userDirection,
-    onLift: onLift
-  });
-
-  if (withMerge) {
-    return withMerge;
-  }
-
-  return getReorderImpact({
-    pageBorderBoxCenterWithDroppableScrollChange: pageBorderBoxCenterWithDroppableScrollChange,
-    destination: destination,
     draggable: draggable,
-    insideDestinationWithoutDraggable: insideDestinationWithoutDraggable,
     previousImpact: previousImpact,
+    destination: destination,
+    insideDestination: insideDestination,
+    userDirection: userDirection,
+    afterCritical: afterCritical
+  }) || getReorderImpact({
+    pageBorderBoxCenterWithDroppableScrollChange: pageBorderBoxCenterWithDroppableScrollChange,
+    draggable: draggable,
+    destination: destination,
+    insideDestination: insideDestination,
+    last: previousImpact.displaced,
     viewport: viewport,
     userDirection: userDirection,
-    onLift: onLift
+    afterCritical: afterCritical
   });
 });
 
@@ -904,94 +1127,44 @@ var getHomeLocation = (function (descriptor) {
   };
 });
 
-var getHomeOnLift = (function (_ref) {
+var getLiftEffect = (function (_ref) {
   var draggable = _ref.draggable,
       home = _ref.home,
       draggables = _ref.draggables,
       viewport = _ref.viewport;
   var displacedBy = getDisplacedBy(home.axis, draggable.displaceBy);
   var insideHome = getDraggablesInsideDroppable(home.descriptor.id, draggables);
-  var originallyDisplaced = insideHome.slice(draggable.descriptor.index + 1);
-  var wasDisplaced = originallyDisplaced.reduce(function (previous, item) {
+  var rawIndex = insideHome.indexOf(draggable);
+  !(rawIndex !== -1) ? process.env.NODE_ENV !== "production" ? invariant(false, 'Expected draggable to be inside home list') : invariant(false) : void 0;
+  var afterDragging = insideHome.slice(rawIndex + 1);
+  var effected = afterDragging.reduce(function (previous, item) {
     previous[item.descriptor.id] = true;
     return previous;
   }, {});
-  var onLift = {
+  var afterCritical = {
+    inVirtualList: home.descriptor.mode === 'VIRTUAL',
     displacedBy: displacedBy,
-    wasDisplaced: wasDisplaced
+    effected: effected
   };
-  var displaced = originallyDisplaced.map(function (dimension) {
-    return getDisplacement({
-      draggable: dimension,
-      destination: home,
-      previousImpact: noImpact,
-      viewport: viewport.frame,
-      forceShouldAnimate: false,
-      onLift: onLift
-    });
+  var displaced = getDisplacementGroups({
+    afterDragging: afterDragging,
+    destination: home,
+    displacedBy: displacedBy,
+    last: null,
+    viewport: viewport.frame,
+    forceShouldAnimate: false
   });
-  var movement = {
-    displaced: displaced,
-    map: getDisplacementMap(displaced),
-    displacedBy: displacedBy
-  };
   var impact = {
-    movement: movement,
-    destination: getHomeLocation(draggable.descriptor),
-    merge: null
+    displaced: displaced,
+    displacedBy: displacedBy,
+    at: {
+      type: 'REORDER',
+      destination: getHomeLocation(draggable.descriptor)
+    }
   };
   return {
     impact: impact,
-    onLift: onLift
-  };
-});
-
-var getDragPositions = (function (_ref) {
-  var oldInitial = _ref.initial,
-      oldCurrent = _ref.current,
-      oldClientBorderBoxCenter = _ref.oldClientBorderBoxCenter,
-      newClientBorderBoxCenter = _ref.newClientBorderBoxCenter,
-      viewport = _ref.viewport;
-  var shift = subtract(newClientBorderBoxCenter, oldClientBorderBoxCenter);
-
-  var initial = function () {
-    var client = {
-      selection: add(oldInitial.client.selection, shift),
-      borderBoxCenter: newClientBorderBoxCenter,
-      offset: origin
-    };
-    var page = {
-      selection: add(client.selection, viewport.scroll.initial),
-      borderBoxCenter: add(client.selection, viewport.scroll.initial)
-    };
-    return {
-      client: client,
-      page: page
-    };
-  }();
-
-  var current = function () {
-    var reverse = negate(shift);
-    var offset = add(oldCurrent.client.offset, reverse);
-    var client = {
-      selection: add(initial.client.selection, offset),
-      borderBoxCenter: add(initial.client.borderBoxCenter, offset),
-      offset: offset
-    };
-    var page = {
-      selection: add(client.selection, viewport.scroll.current),
-      borderBoxCenter: add(client.borderBoxCenter, viewport.scroll.current)
-    };
-    !isEqual(oldCurrent.client.borderBoxCenter, client.borderBoxCenter) ? process.env.NODE_ENV !== "production" ? invariant(false, "\n        Incorrect new client center position.\n        Expected (" + oldCurrent.client.borderBoxCenter.x + ", " + oldCurrent.client.borderBoxCenter.y + ")\n        to equal (" + client.borderBoxCenter.x + ", " + client.borderBoxCenter.y + ")\n      ") : invariant(false) : void 0;
-    return {
-      client: client,
-      page: page
-    };
-  }();
-
-  return {
-    current: current,
-    initial: initial
+    afterCritical: afterCritical
   };
 });
 
@@ -1013,119 +1186,6 @@ var offsetDraggable = (function (_ref) {
   return moved;
 });
 
-var adjustExistingForAdditionsAndRemovals = (function (_ref) {
-  var existing = _ref.existing,
-      droppables = _ref.droppables,
-      addedDraggables = _ref.additions,
-      removedDraggables = _ref.removals,
-      viewport = _ref.viewport;
-  var shifted = {};
-  toDroppableList(droppables).forEach(function (droppable) {
-    var axis = droppable.axis;
-    var original = getDraggablesInsideDroppable(droppable.descriptor.id, existing);
-    var toShift = {};
-
-    var addShift = function addShift(id, shift) {
-      var previous = toShift[id];
-
-      if (!previous) {
-        toShift[id] = shift;
-        return;
-      }
-
-      toShift[id] = {
-        indexChange: previous.indexChange + shift.indexChange,
-        offset: add(previous.offset, shift.offset)
-      };
-    };
-
-    var removals = toDraggableMap(removedDraggables.map(function (id) {
-      var item = existing[id];
-      !item ? process.env.NODE_ENV !== "production" ? invariant(false, "Could not find removed draggable \"" + id + "\"") : invariant(false) : void 0;
-      return item;
-    }).filter(function (draggable) {
-      return draggable.descriptor.droppableId === droppable.descriptor.id;
-    }));
-    var withRemovals = original.filter(function (item, index) {
-      var isBeingRemoved = Boolean(removals[item.descriptor.id]);
-
-      if (!isBeingRemoved) {
-        return true;
-      }
-
-      var offset = negate(patch(axis.line, item.displaceBy[axis.line]));
-      original.slice(index).forEach(function (sibling) {
-        if (removals[sibling.descriptor.id]) {
-          return;
-        }
-
-        addShift(sibling.descriptor.id, {
-          indexChange: -1,
-          offset: offset
-        });
-      });
-      return false;
-    });
-    var additions = addedDraggables.filter(function (draggable) {
-      return draggable.descriptor.droppableId === droppable.descriptor.id;
-    });
-    var withAdditions = withRemovals.slice(0);
-    additions.forEach(function (item) {
-      withAdditions.splice(item.descriptor.index, 0, item);
-    });
-    var additionMap = toDraggableMap(additions);
-    withAdditions.forEach(function (item, index) {
-      var wasAdded = Boolean(additionMap[item.descriptor.id]);
-
-      if (!wasAdded) {
-        return;
-      }
-
-      var offset = patch(axis.line, item.client.marginBox[axis.size]);
-      withAdditions.slice(index).forEach(function (sibling) {
-        if (additionMap[sibling.descriptor.id]) {
-          return;
-        }
-
-        addShift(sibling.descriptor.id, {
-          indexChange: 1,
-          offset: offset
-        });
-      });
-    });
-    withAdditions.forEach(function (item) {
-      if (additionMap[item.descriptor.id]) {
-        return;
-      }
-
-      var shift = toShift[item.descriptor.id];
-
-      if (!shift) {
-        return;
-      }
-
-      var moved = offsetDraggable({
-        draggable: item,
-        offset: shift.offset,
-        initialWindowScroll: viewport.scroll.initial
-      });
-      var index = item.descriptor.index + shift.indexChange;
-
-      var updated = _extends({}, moved, {
-        descriptor: _extends({}, item.descriptor, {
-          index: index
-        })
-      });
-
-      shifted[moved.descriptor.id] = updated;
-    });
-  });
-
-  var map = _extends({}, existing, shifted);
-
-  return map;
-});
-
 var adjustAdditionsForScrollChanges = (function (_ref) {
   var additions = _ref.additions,
       updatedDroppables = _ref.updatedDroppables,
@@ -1145,65 +1205,6 @@ var adjustAdditionsForScrollChanges = (function (_ref) {
     });
     return moved;
   });
-});
-
-var adjustAdditionsForCollapsedHome = (function (_ref) {
-  var additions = _ref.additions,
-      dragging = _ref.dragging,
-      home = _ref.home,
-      viewport = _ref.viewport;
-  var displacedBy = getDisplacedBy(home.axis, dragging.displaceBy);
-  return additions.map(function (draggable) {
-    if (draggable.descriptor.droppableId !== home.descriptor.id) {
-      return draggable;
-    }
-
-    if (draggable.descriptor.index < dragging.descriptor.index) {
-      return draggable;
-    }
-
-    return offsetDraggable({
-      draggable: draggable,
-      offset: displacedBy.point,
-      initialWindowScroll: viewport.scroll.initial
-    });
-  });
-});
-
-var updateDraggables = (function (_ref) {
-  var updatedDroppables = _ref.updatedDroppables,
-      criticalId = _ref.criticalId,
-      unmodifiedExisting = _ref.existing,
-      unmodifiedAdditions = _ref.additions,
-      removals = _ref.removals,
-      viewport = _ref.viewport;
-  var existing = adjustExistingForAdditionsAndRemovals({
-    droppables: updatedDroppables,
-    existing: unmodifiedExisting,
-    additions: unmodifiedAdditions,
-    removals: removals,
-    viewport: viewport
-  });
-  var dragging = existing[criticalId];
-  var home = updatedDroppables[dragging.descriptor.droppableId];
-  var scrolledAdditions = adjustAdditionsForScrollChanges({
-    additions: unmodifiedAdditions,
-    updatedDroppables: updatedDroppables,
-    viewport: viewport
-  });
-  var additions = adjustAdditionsForCollapsedHome({
-    additions: scrolledAdditions,
-    dragging: dragging,
-    home: home,
-    viewport: viewport
-  });
-
-  var map = _extends({}, existing, toDraggableMap(additions));
-
-  removals.forEach(function (id) {
-    delete map[id];
-  });
-  return map;
 });
 
 var getMaxScroll = (function (_ref) {
@@ -1284,10 +1285,6 @@ var getDroppableDimension = (function (_ref) {
     subject: subject
   };
   return dimension;
-});
-
-var isHomeOf = (function (draggable, destination) {
-  return draggable.descriptor.droppableId === destination.descriptor.id;
 });
 
 var getRequiredGrowthForPlaceholder = function getRequiredGrowthForPlaceholder(droppable, placeholderSize, draggables) {
@@ -1386,122 +1383,6 @@ var removePlaceholder = function removePlaceholder(droppable) {
   });
 };
 
-var getFrame = (function (droppable) {
-  var frame = droppable.frame;
-  !frame ? process.env.NODE_ENV !== "production" ? invariant(false, 'Expected Droppable to have a frame') : invariant(false) : void 0;
-  return frame;
-});
-
-var throwIfSpacingChange = function throwIfSpacingChange(old, fresh) {
-  if (process.env.NODE_ENV !== 'production') {
-    var getMessage = function getMessage(spacingType) {
-      return "Cannot change the " + spacingType + " of a Droppable during a drag";
-    };
-
-    !isEqual$1(old.margin, fresh.margin) ? process.env.NODE_ENV !== "production" ? invariant(false, getMessage('margin')) : invariant(false) : void 0;
-    !isEqual$1(old.border, fresh.border) ? process.env.NODE_ENV !== "production" ? invariant(false, getMessage('border')) : invariant(false) : void 0;
-    !isEqual$1(old.padding, fresh.padding) ? process.env.NODE_ENV !== "production" ? invariant(false, getMessage('padding')) : invariant(false) : void 0;
-  }
-};
-
-var adjustBorderBoxSize = function adjustBorderBoxSize(axis, old, fresh) {
-  return {
-    top: old.top,
-    left: old.left,
-    right: old.left + fresh.width,
-    bottom: old.top + fresh.height
-  };
-};
-
-var updateDroppables = (function (_ref) {
-  var modified = _ref.modified,
-      existing = _ref.existing,
-      viewport = _ref.viewport;
-
-  if (!modified.length) {
-    return existing;
-  }
-
-  var adjusted = modified.map(function (provided) {
-    var raw = existing[provided.descriptor.id];
-    !raw ? process.env.NODE_ENV !== "production" ? invariant(false, 'Could not locate droppable in existing droppables') : invariant(false) : void 0;
-    var hasPlaceholder = Boolean(raw.subject.withPlaceholder);
-    var dimension = hasPlaceholder ? removePlaceholder(raw) : raw;
-    var oldClient = dimension.client;
-    var newClient = provided.client;
-    var oldScrollable = getFrame(dimension);
-    var newScrollable = getFrame(provided);
-
-    if (process.env.NODE_ENV !== 'production') {
-      throwIfSpacingChange(dimension.client, provided.client);
-      throwIfSpacingChange(oldScrollable.frameClient, newScrollable.frameClient);
-      var isFrameEqual = oldScrollable.frameClient.borderBox.height === newScrollable.frameClient.borderBox.height && oldScrollable.frameClient.borderBox.width === newScrollable.frameClient.borderBox.width;
-      !isFrameEqual ? process.env.NODE_ENV !== "production" ? invariant(false, 'The width and height of your Droppable scroll container cannot change when adding or removing Draggables during a drag') : invariant(false) : void 0;
-    }
-
-    var client = createBox({
-      borderBox: adjustBorderBoxSize(dimension.axis, oldClient.borderBox, newClient.borderBox),
-      margin: oldClient.margin,
-      border: oldClient.border,
-      padding: oldClient.padding
-    });
-    var closest = {
-      client: oldScrollable.frameClient,
-      page: withScroll(oldScrollable.frameClient, viewport.scroll.initial),
-      shouldClipSubject: oldScrollable.shouldClipSubject,
-      scrollSize: newScrollable.scrollSize,
-      scroll: oldScrollable.scroll.initial
-    };
-    var withSizeChanged = getDroppableDimension({
-      descriptor: provided.descriptor,
-      isEnabled: provided.isEnabled,
-      isCombineEnabled: provided.isCombineEnabled,
-      isFixedOnPage: provided.isFixedOnPage,
-      direction: provided.axis.direction,
-      client: client,
-      page: withScroll(client, viewport.scroll.initial),
-      closest: closest
-    });
-    var scrolled = scrollDroppable(withSizeChanged, newScrollable.scroll.current);
-    return scrolled;
-  });
-
-  var result = _extends({}, existing, toDroppableMap(adjusted));
-
-  return result;
-});
-
-var withNoAnimatedDisplacement = (function (impact) {
-  var displaced = impact.movement.displaced;
-
-  if (!displaced.length) {
-    return impact;
-  }
-
-  var withoutAnimation = displaced.map(function (displacement) {
-    if (!displacement.isVisible) {
-      return displacement;
-    }
-
-    if (!displacement.shouldAnimate) {
-      return displacement;
-    }
-
-    return _extends({}, displacement, {
-      shouldAnimate: false
-    });
-  });
-
-  var result = _extends({}, impact, {
-    movement: _extends({}, impact.movement, {
-      displaced: withoutAnimation,
-      map: getDisplacementMap(withoutAnimation)
-    })
-  });
-
-  return result;
-});
-
 var patchDroppableMap = (function (droppables, updated) {
   var _extends2;
 
@@ -1564,92 +1445,6 @@ var recomputePlaceholders = (function (_ref2) {
   return patchDroppableMap(cleaned, patched);
 });
 
-var timingsKey = 'Processing dynamic changes';
-var publishWhileDragging = (function (_ref) {
-  var _extends2, _extends3;
-
-  var state = _ref.state,
-      published = _ref.published;
-  start(timingsKey);
-  var updatedDroppables = updateDroppables({
-    modified: published.modified,
-    existing: state.dimensions.droppables,
-    viewport: state.viewport
-  });
-  var draggables = updateDraggables({
-    updatedDroppables: updatedDroppables,
-    criticalId: state.critical.draggable.id,
-    existing: state.dimensions.draggables,
-    additions: published.additions,
-    removals: published.removals,
-    viewport: state.viewport
-  });
-  var critical = {
-    draggable: draggables[state.critical.draggable.id].descriptor,
-    droppable: updatedDroppables[state.critical.droppable.id].descriptor
-  };
-  var original = state.dimensions.draggables[critical.draggable.id];
-  var updated = draggables[critical.draggable.id];
-  var droppables = recomputePlaceholders({
-    draggable: updated,
-    draggables: draggables,
-    droppables: updatedDroppables,
-    previousImpact: state.impact,
-    impact: state.impact
-  });
-  var dimensions = {
-    draggables: draggables,
-    droppables: droppables
-  };
-
-  var _getDragPositions = getDragPositions({
-    initial: state.initial,
-    current: state.current,
-    oldClientBorderBoxCenter: original.client.borderBox.center,
-    newClientBorderBoxCenter: updated.client.borderBox.center,
-    viewport: state.viewport
-  }),
-      initial = _getDragPositions.initial,
-      current = _getDragPositions.current;
-
-  var _getHomeOnLift = getHomeOnLift({
-    draggable: updated,
-    home: dimensions.droppables[critical.droppable.id],
-    draggables: dimensions.draggables,
-    viewport: state.viewport
-  }),
-      homeImpact = _getHomeOnLift.impact,
-      onLift = _getHomeOnLift.onLift;
-
-  var impact = withNoAnimatedDisplacement(getDragImpact({
-    pageBorderBoxCenter: current.page.borderBoxCenter,
-    draggable: updated,
-    draggables: dimensions.draggables,
-    droppables: dimensions.droppables,
-    previousImpact: homeImpact,
-    viewport: state.viewport,
-    userDirection: state.userDirection,
-    onLift: onLift
-  }));
-  var isOrphaned = Boolean(state.movementMode === 'SNAP' && !whatIsDraggedOver(impact));
-  !!isOrphaned ? process.env.NODE_ENV !== "production" ? invariant(false, 'Dragging item no longer has a valid merge/destination after a dynamic update. This is not supported') : invariant(false) : void 0;
-  finish(timingsKey);
-
-  var draggingState = _extends({
-    phase: 'DRAGGING'
-  }, state, (_extends2 = {}, _extends2["phase"] = 'DRAGGING', _extends2.critical = critical, _extends2.current = current, _extends2.initial = initial, _extends2.impact = impact, _extends2.dimensions = dimensions, _extends2.onLift = onLift, _extends2.onLiftImpact = homeImpact, _extends2.forceShouldAnimate = false, _extends2));
-
-  if (state.phase === 'COLLECTING') {
-    return draggingState;
-  }
-
-  var dropPending = _extends({
-    phase: 'DROP_PENDING'
-  }, draggingState, (_extends3 = {}, _extends3["phase"] = 'DROP_PENDING', _extends3.reason = state.reason, _extends3.isWaiting = false, _extends3));
-
-  return dropPending;
-});
-
 var forward = {
   vertical: 'down',
   horizontal: 'right'
@@ -1659,181 +1454,140 @@ var backward = {
   horizontal: 'left'
 };
 
+function tryGetDestination(impact) {
+  if (impact.at && impact.at.type === 'REORDER') {
+    return impact.at.destination;
+  }
+
+  return null;
+}
+function tryGetCombine(impact) {
+  if (impact.at && impact.at.type === 'COMBINE') {
+    return impact.at.combine;
+  }
+
+  return null;
+}
+
 var moveToNextCombine = (function (_ref) {
   var isMovingForward = _ref.isMovingForward,
-      isInHomeList = _ref.isInHomeList,
       draggable = _ref.draggable,
       destination = _ref.destination,
-      originalInsideDestination = _ref.insideDestination,
+      insideDestination = _ref.insideDestination,
       previousImpact = _ref.previousImpact;
 
   if (!destination.isCombineEnabled) {
     return null;
   }
 
-  if (previousImpact.merge) {
+  var location = tryGetDestination(previousImpact);
+
+  if (!location) {
     return null;
   }
 
-  var location = previousImpact.destination;
-  !location ? process.env.NODE_ENV !== "production" ? invariant(false, 'Need a previous location to move from into a combine') : invariant(false) : void 0;
-  var currentIndex = location.index;
+  function getImpact(target) {
+    var at = {
+      type: 'COMBINE',
+      whenEntered: isMovingForward ? forward : backward,
+      combine: {
+        draggableId: target,
+        droppableId: destination.descriptor.id
+      }
+    };
+    return _extends({}, previousImpact, {
+      at: at
+    });
+  }
 
-  var currentInsideDestination = function () {
-    var shallow = originalInsideDestination.slice();
+  var all = previousImpact.displaced.all;
+  var closestId = all.length ? all[0] : null;
 
-    if (isInHomeList) {
-      shallow.splice(draggable.descriptor.index, 1);
+  if (isMovingForward) {
+    return closestId ? getImpact(closestId) : null;
+  }
+
+  var withoutDraggable = removeDraggableFromList(draggable, insideDestination);
+
+  if (!closestId) {
+    if (!withoutDraggable.length) {
+      return null;
     }
 
-    shallow.splice(location.index, 0, draggable);
-    return shallow;
-  }();
-
-  var targetIndex = isMovingForward ? currentIndex + 1 : currentIndex - 1;
-
-  if (targetIndex < 0) {
-    return null;
+    var last = withoutDraggable[withoutDraggable.length - 1];
+    return getImpact(last.descriptor.id);
   }
 
-  if (targetIndex > currentInsideDestination.length - 1) {
-    return null;
-  }
-
-  var target = currentInsideDestination[targetIndex];
-  !(target !== draggable) ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot combine with self') : invariant(false) : void 0;
-  var merge = {
-    whenEntered: isMovingForward ? forward : backward,
-    combine: {
-      draggableId: target.descriptor.id,
-      droppableId: destination.descriptor.id
-    }
-  };
-  var impact = {
-    movement: previousImpact.movement,
-    destination: null,
-    merge: merge
-  };
-  return impact;
-});
-
-var addClosest = function addClosest(add, displaced) {
-  var added = {
-    draggableId: add.descriptor.id,
-    isVisible: true,
-    shouldAnimate: true
-  };
-  return [added].concat(displaced);
-};
-var removeClosest = function removeClosest(displaced) {
-  return displaced.slice(1);
-};
-
-var fromReorder = (function (_ref) {
-  var isMovingForward = _ref.isMovingForward,
-      isInHomeList = _ref.isInHomeList,
-      draggable = _ref.draggable,
-      initialInside = _ref.insideDestination,
-      location = _ref.location;
-  var insideDestination = initialInside.slice();
-  var currentIndex = location.index;
-  var isInForeignList = !isInHomeList;
-
-  if (isInForeignList) {
-    insideDestination.splice(location.index, 0, draggable);
-  }
-
-  var proposedIndex = isMovingForward ? currentIndex + 1 : currentIndex - 1;
+  var indexOfClosest = findIndex(withoutDraggable, function (d) {
+    return d.descriptor.id === closestId;
+  });
+  !(indexOfClosest !== -1) ? process.env.NODE_ENV !== "production" ? invariant(false, 'Could not find displaced item in set') : invariant(false) : void 0;
+  var proposedIndex = indexOfClosest - 1;
 
   if (proposedIndex < 0) {
     return null;
   }
 
-  if (proposedIndex > insideDestination.length - 1) {
-    return null;
-  }
-
-  return {
-    proposedIndex: proposedIndex,
-    modifyDisplacement: true
-  };
+  var before = withoutDraggable[proposedIndex];
+  return getImpact(before.descriptor.id);
 });
 
 var fromCombine = (function (_ref) {
   var isMovingForward = _ref.isMovingForward,
       destination = _ref.destination,
-      previousImpact = _ref.previousImpact,
       draggables = _ref.draggables,
-      merge = _ref.merge,
-      onLift = _ref.onLift;
+      combine = _ref.combine,
+      afterCritical = _ref.afterCritical;
 
   if (!destination.isCombineEnabled) {
     return null;
   }
 
-  var movement = previousImpact.movement;
-  var combineId = merge.combine.draggableId;
-  var combine = draggables[combineId];
-  var combineIndex = combine.descriptor.index;
-  var wasDisplacedAtStart = didStartDisplaced(combineId, onLift);
+  var combineId = combine.draggableId;
+  var combineWith = draggables[combineId];
+  var combineWithIndex = combineWith.descriptor.index;
+  var didCombineWithStartAfterCritical = didStartAfterCritical(combineId, afterCritical);
 
-  if (wasDisplacedAtStart) {
-    var hasDisplacedFromStart = !movement.map[combineId];
-
-    if (hasDisplacedFromStart) {
-      if (isMovingForward) {
-        return {
-          proposedIndex: combineIndex,
-          modifyDisplacement: false
-        };
-      }
-
-      return {
-        proposedIndex: combineIndex - 1,
-        modifyDisplacement: true
-      };
-    }
-
+  if (didCombineWithStartAfterCritical) {
     if (isMovingForward) {
-      return {
-        proposedIndex: combineIndex,
-        modifyDisplacement: true
-      };
+      return combineWithIndex;
     }
 
-    return {
-      proposedIndex: combineIndex - 1,
-      modifyDisplacement: false
-    };
-  }
-
-  var isDisplaced = Boolean(movement.map[combineId]);
-
-  if (isDisplaced) {
-    if (isMovingForward) {
-      return {
-        proposedIndex: combineIndex + 1,
-        modifyDisplacement: true
-      };
-    }
-
-    return {
-      proposedIndex: combineIndex,
-      modifyDisplacement: false
-    };
+    return combineWithIndex - 1;
   }
 
   if (isMovingForward) {
-    return {
-      proposedIndex: combineIndex + 1,
-      modifyDisplacement: false
-    };
+    return combineWithIndex + 1;
   }
 
-  return {
-    proposedIndex: combineIndex,
-    modifyDisplacement: true
-  };
+  return combineWithIndex;
+});
+
+var fromReorder = (function (_ref) {
+  var isMovingForward = _ref.isMovingForward,
+      isInHomeList = _ref.isInHomeList,
+      insideDestination = _ref.insideDestination,
+      location = _ref.location;
+
+  if (!insideDestination.length) {
+    return null;
+  }
+
+  var currentIndex = location.index;
+  var proposedIndex = isMovingForward ? currentIndex + 1 : currentIndex - 1;
+  var firstIndex = insideDestination[0].descriptor.index;
+  var lastIndex = insideDestination[insideDestination.length - 1].descriptor.index;
+  var upperBound = isInHomeList ? lastIndex : lastIndex + 1;
+
+  if (proposedIndex < firstIndex) {
+    return null;
+  }
+
+  if (proposedIndex > upperBound) {
+    return null;
+  }
+
+  return proposedIndex;
 });
 
 var moveToNextIndex = (function (_ref) {
@@ -1844,82 +1598,71 @@ var moveToNextIndex = (function (_ref) {
       destination = _ref.destination,
       insideDestination = _ref.insideDestination,
       previousImpact = _ref.previousImpact,
-      onLift = _ref.onLift;
+      viewport = _ref.viewport,
+      afterCritical = _ref.afterCritical;
+  var wasAt = previousImpact.at;
+  !wasAt ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot move in direction without previous impact location') : invariant(false) : void 0;
 
-  var instruction = function () {
-    if (previousImpact.destination) {
-      return fromReorder({
-        isMovingForward: isMovingForward,
-        isInHomeList: isInHomeList,
-        draggable: draggable,
-        location: previousImpact.destination,
-        insideDestination: insideDestination
-      });
+  if (wasAt.type === 'REORDER') {
+    var _newIndex = fromReorder({
+      isMovingForward: isMovingForward,
+      isInHomeList: isInHomeList,
+      location: wasAt.destination,
+      insideDestination: insideDestination
+    });
+
+    if (_newIndex == null) {
+      return null;
     }
 
-    if (previousImpact.merge) {
-      return fromCombine({
-        isMovingForward: isMovingForward,
-        destination: destination,
-        previousImpact: previousImpact,
-        draggables: draggables,
-        merge: previousImpact.merge,
-        onLift: onLift
-      });
-    }
-    return null;
-  }();
+    return calculateReorderImpact({
+      draggable: draggable,
+      insideDestination: insideDestination,
+      destination: destination,
+      viewport: viewport,
+      last: previousImpact.displaced,
+      displacedBy: previousImpact.displacedBy,
+      index: _newIndex
+    });
+  }
 
-  if (instruction == null) {
+  var newIndex = fromCombine({
+    isMovingForward: isMovingForward,
+    destination: destination,
+    displaced: previousImpact.displaced,
+    draggables: draggables,
+    combine: wasAt.combine,
+    afterCritical: afterCritical
+  });
+
+  if (newIndex == null) {
     return null;
   }
 
-  var proposedIndex = instruction.proposedIndex,
-      modifyDisplacement = instruction.modifyDisplacement;
-  var displacedBy = getDisplacedBy(destination.axis, draggable.displaceBy);
-
-  var displaced = function () {
-    var lastDisplaced = previousImpact.movement.displaced;
-
-    if (!modifyDisplacement) {
-      return lastDisplaced;
-    }
-
-    if (isMovingForward) {
-      return removeClosest(lastDisplaced);
-    }
-
-    var withoutDraggable = removeDraggableFromList(draggable, insideDestination);
-    var atProposedIndex = withoutDraggable[proposedIndex];
-    return addClosest(atProposedIndex, lastDisplaced);
-  }();
-
-  return {
-    movement: {
-      displacedBy: displacedBy,
-      displaced: displaced,
-      map: getDisplacementMap(displaced)
-    },
-    destination: {
-      droppableId: destination.descriptor.id,
-      index: proposedIndex
-    },
-    merge: null
-  };
+  return calculateReorderImpact({
+    draggable: draggable,
+    insideDestination: insideDestination,
+    destination: destination,
+    viewport: viewport,
+    last: previousImpact.displaced,
+    displacedBy: previousImpact.displacedBy,
+    index: newIndex
+  });
 });
 
 var whenCombining = (function (_ref) {
-  var combine = _ref.combine,
-      onLift = _ref.onLift,
-      movement = _ref.movement,
+  var afterCritical = _ref.afterCritical,
+      impact = _ref.impact,
       draggables = _ref.draggables;
+  var combine = tryGetCombine(impact);
+  !combine ? process.env.NODE_ENV !== "production" ? invariant(false) : invariant(false) : void 0;
   var combineWith = combine.draggableId;
   var center = draggables[combineWith].page.borderBox.center;
   var displaceBy = getCombinedItemDisplacement({
-    displaced: movement.map,
-    onLift: onLift,
+    displaced: impact.displaced,
+    afterCritical: afterCritical,
     combineWith: combineWith,
-    displacedBy: movement.displacedBy
+    displacedBy: impact.displacedBy
   });
   return add(center, displaceBy);
 });
@@ -1956,11 +1699,11 @@ var goIntoStart = function goIntoStart(_ref3) {
 };
 
 var whenReordering = (function (_ref) {
-  var movement = _ref.movement,
+  var impact = _ref.impact,
       draggable = _ref.draggable,
       draggables = _ref.draggables,
       droppable = _ref.droppable,
-      onLift = _ref.onLift;
+      afterCritical = _ref.afterCritical;
   var insideDestination = getDraggablesInsideDroppable(droppable.descriptor.id, draggables);
   var draggablePage = draggable.page;
   var axis = droppable.axis;
@@ -1973,21 +1716,22 @@ var whenReordering = (function (_ref) {
     });
   }
 
-  var displaced = movement.displaced,
-      displacedBy = movement.displacedBy;
+  var displaced = impact.displaced,
+      displacedBy = impact.displacedBy;
+  var closestAfter = displaced.all[0];
 
-  if (displaced.length) {
-    var closestAfter = draggables[displaced[0].draggableId];
+  if (closestAfter) {
+    var closest = draggables[closestAfter];
 
-    if (didStartDisplaced(closestAfter.descriptor.id, onLift)) {
+    if (didStartAfterCritical(closestAfter, afterCritical)) {
       return goBefore({
         axis: axis,
-        moveRelativeTo: closestAfter.page,
+        moveRelativeTo: closest.page,
         isMoving: draggablePage
       });
     }
 
-    var withDisplacement = offset(closestAfter.page, displacedBy.point);
+    var withDisplacement = offset(closest.page, displacedBy.point);
     return goBefore({
       axis: axis,
       moveRelativeTo: withDisplacement,
@@ -2001,8 +1745,8 @@ var whenReordering = (function (_ref) {
     return draggablePage.borderBox.center;
   }
 
-  if (didStartDisplaced(last.descriptor.id, onLift)) {
-    var page = offset(last.page, negate(onLift.displacedBy.point));
+  if (didStartAfterCritical(last.descriptor.id, afterCritical)) {
+    var page = offset(last.page, negate(afterCritical.displacedBy.point));
     return goAfter({
       axis: axis,
       moveRelativeTo: page,
@@ -2032,35 +1776,33 @@ var getResultWithoutDroppableDisplacement = function getResultWithoutDroppableDi
       draggable = _ref.draggable,
       droppable = _ref.droppable,
       draggables = _ref.draggables,
-      onLift = _ref.onLift;
-  var merge = impact.merge;
-  var destination = impact.destination;
+      afterCritical = _ref.afterCritical;
   var original = draggable.page.borderBox.center;
+  var at = impact.at;
 
   if (!droppable) {
     return original;
   }
 
-  if (destination) {
+  if (!at) {
+    return original;
+  }
+
+  if (at.type === 'REORDER') {
     return whenReordering({
-      movement: impact.movement,
+      impact: impact,
       draggable: draggable,
       draggables: draggables,
       droppable: droppable,
-      onLift: onLift
+      afterCritical: afterCritical
     });
   }
 
-  if (merge) {
-    return whenCombining({
-      movement: impact.movement,
-      combine: merge.combine,
-      draggables: draggables,
-      onLift: onLift
-    });
-  }
-
-  return original;
+  return whenCombining({
+    impact: impact,
+    draggables: draggables,
+    afterCritical: afterCritical
+  });
 };
 
 var getPageBorderBoxCenterFromImpact = (function (args) {
@@ -2106,60 +1848,72 @@ var scrollViewport = (function (viewport, newScroll) {
   return updated;
 });
 
-var withNewDisplacement = (function (impact, displaced) {
-  return _extends({}, impact, {
-    movement: _extends({}, impact.movement, {
-      displaced: displaced,
-      map: getDisplacementMap(displaced)
-    })
+function getDraggables(ids, draggables) {
+  return ids.map(function (id) {
+    return draggables[id];
   });
-});
+}
+
+function tryGetVisible(id, groups) {
+  for (var i = 0; i < groups.length; i++) {
+    var displacement = groups[i].visible[id];
+
+    if (displacement) {
+      return displacement;
+    }
+  }
+
+  return null;
+}
 
 var speculativelyIncrease = (function (_ref) {
   var impact = _ref.impact,
       viewport = _ref.viewport,
       destination = _ref.destination,
       draggables = _ref.draggables,
-      maxScrollChange = _ref.maxScrollChange,
-      onLift = _ref.onLift;
-  var displaced = impact.movement.displaced;
+      maxScrollChange = _ref.maxScrollChange;
   var scrolledViewport = scrollViewport(viewport, add(viewport.scroll.current, maxScrollChange));
   var scrolledDroppable = destination.frame ? scrollDroppable(destination, add(destination.frame.scroll.current, maxScrollChange)) : destination;
-  var updated = displaced.map(function (entry) {
-    if (entry.isVisible) {
-      return entry;
-    }
-
-    var draggable = draggables[entry.draggableId];
-    var withScrolledViewport = getDisplacement({
-      draggable: draggable,
-      destination: destination,
-      previousImpact: impact,
-      viewport: scrolledViewport.frame,
-      onLift: onLift,
-      forceShouldAnimate: false
-    });
-
-    if (withScrolledViewport.isVisible) {
-      return withScrolledViewport;
-    }
-
-    var withScrolledDroppable = getDisplacement({
-      draggable: draggable,
-      destination: scrolledDroppable,
-      previousImpact: impact,
-      viewport: viewport.frame,
-      onLift: onLift,
-      forceShouldAnimate: false
-    });
-
-    if (withScrolledDroppable.isVisible) {
-      return withScrolledDroppable;
-    }
-
-    return entry;
+  var last = impact.displaced;
+  var withViewportScroll = getDisplacementGroups({
+    afterDragging: getDraggables(last.all, draggables),
+    destination: destination,
+    displacedBy: impact.displacedBy,
+    viewport: scrolledViewport.frame,
+    last: last,
+    forceShouldAnimate: false
   });
-  return withNewDisplacement(impact, updated);
+  var withDroppableScroll = getDisplacementGroups({
+    afterDragging: getDraggables(last.all, draggables),
+    destination: scrolledDroppable,
+    displacedBy: impact.displacedBy,
+    viewport: viewport.frame,
+    last: last,
+    forceShouldAnimate: false
+  });
+  var invisible = {};
+  var visible = {};
+  var groups = [last, withViewportScroll, withDroppableScroll];
+  last.all.forEach(function (id) {
+    var displacement = tryGetVisible(id, groups);
+
+    if (displacement) {
+      visible[id] = displacement;
+      return;
+    }
+
+    invisible[id] = true;
+  });
+
+  var newImpact = _extends({}, impact, {
+    displaced: {
+      all: last.all,
+      invisible: invisible,
+      visible: visible
+    }
+  });
+
+  return newImpact;
 });
 
 var withViewportDisplacement = (function (viewport, point) {
@@ -2203,7 +1957,7 @@ var moveToNextPlace = (function (_ref) {
       viewport = _ref.viewport,
       previousPageBorderBoxCenter = _ref.previousPageBorderBoxCenter,
       previousClientSelection = _ref.previousClientSelection,
-      onLift = _ref.onLift;
+      afterCritical = _ref.afterCritical;
 
   if (!destination.isEnabled) {
     return null;
@@ -2212,7 +1966,6 @@ var moveToNextPlace = (function (_ref) {
   var insideDestination = getDraggablesInsideDroppable(destination.descriptor.id, draggables);
   var isInHomeList = isHomeOf(draggable, destination);
   var impact = moveToNextCombine({
-    isInHomeList: isInHomeList,
     isMovingForward: isMovingForward,
     draggable: draggable,
     destination: destination,
@@ -2226,7 +1979,8 @@ var moveToNextPlace = (function (_ref) {
     destination: destination,
     insideDestination: insideDestination,
     previousImpact: previousImpact,
-    onLift: onLift
+    viewport: viewport,
+    afterCritical: afterCritical
   });
 
   if (!impact) {
@@ -2238,7 +1992,7 @@ var moveToNextPlace = (function (_ref) {
     draggable: draggable,
     droppable: destination,
     draggables: draggables,
-    onLift: onLift
+    afterCritical: afterCritical
   });
   var isVisibleInNewLocation = isTotallyVisibleInNewLocation({
     draggable: draggable,
@@ -2268,8 +2022,7 @@ var moveToNextPlace = (function (_ref) {
     viewport: viewport,
     destination: destination,
     draggables: draggables,
-    maxScrollChange: distance,
-    onLift: onLift
+    maxScrollChange: distance
   });
   return {
     clientSelection: previousClientSelection,
@@ -2366,13 +2119,13 @@ var getBestCrossAxisDroppable = (function (_ref) {
   })[0];
 });
 
-var getCurrentPageBorderBoxCenter = function getCurrentPageBorderBoxCenter(draggable, onLift) {
+var getCurrentPageBorderBoxCenter = function getCurrentPageBorderBoxCenter(draggable, afterCritical) {
   var original = draggable.page.borderBox.center;
-  return didStartDisplaced(draggable.descriptor.id, onLift) ? subtract(original, onLift.displacedBy.point) : original;
+  return didStartAfterCritical(draggable.descriptor.id, afterCritical) ? subtract(original, afterCritical.displacedBy.point) : original;
 };
-var getCurrentPageBorderBox = function getCurrentPageBorderBox(draggable, onLift) {
+var getCurrentPageBorderBox = function getCurrentPageBorderBox(draggable, afterCritical) {
   var original = draggable.page.borderBox;
-  return didStartDisplaced(draggable.descriptor.id, onLift) ? offsetByPosition(original, negate(onLift.displacedBy.point)) : original;
+  return didStartAfterCritical(draggable.descriptor.id, afterCritical) ? offsetByPosition(original, negate(afterCritical.displacedBy.point)) : original;
 };
 
 var getClosestDraggable = (function (_ref) {
@@ -2380,17 +2133,17 @@ var getClosestDraggable = (function (_ref) {
       viewport = _ref.viewport,
       destination = _ref.destination,
       insideDestination = _ref.insideDestination,
-      onLift = _ref.onLift;
+      afterCritical = _ref.afterCritical;
   var sorted = insideDestination.filter(function (draggable) {
     return isTotallyVisible({
-      target: getCurrentPageBorderBox(draggable, onLift),
+      target: getCurrentPageBorderBox(draggable, afterCritical),
       destination: destination,
       viewport: viewport.frame,
       withDroppableDisplacement: true
     });
   }).sort(function (a, b) {
-    var distanceToA = distance(pageBorderBoxCenter, withDroppableDisplacement(destination, getCurrentPageBorderBoxCenter(a, onLift)));
-    var distanceToB = distance(pageBorderBoxCenter, withDroppableDisplacement(destination, getCurrentPageBorderBoxCenter(b, onLift)));
+    var distanceToA = distance(pageBorderBoxCenter, withDroppableDisplacement(destination, getCurrentPageBorderBoxCenter(a, afterCritical)));
+    var distanceToB = distance(pageBorderBoxCenter, withDroppableDisplacement(destination, getCurrentPageBorderBoxCenter(b, afterCritical)));
 
     if (distanceToA < distanceToB) {
       return -1;
@@ -2412,9 +2165,8 @@ var moveToNewDroppable = (function (_ref) {
       draggable = _ref.draggable,
       draggables = _ref.draggables,
       destination = _ref.destination,
-      previousImpact = _ref.previousImpact,
       viewport = _ref.viewport,
-      onLift = _ref.onLift;
+      afterCritical = _ref.afterCritical;
 
   if (!moveRelativeTo) {
     if (insideDestination.length) {
@@ -2422,19 +2174,22 @@ var moveToNewDroppable = (function (_ref) {
     }
 
     var proposed = {
-      movement: noMovement,
-      destination: {
-        droppableId: destination.descriptor.id,
-        index: 0
-      },
-      merge: null
+      displaced: emptyGroups,
+      displacedBy: noDisplacedBy,
+      at: {
+        type: 'REORDER',
+        destination: {
+          droppableId: destination.descriptor.id,
+          index: 0
+        }
+      }
     };
     var proposedPageBorderBoxCenter = getPageBorderBoxCenterFromImpact({
       impact: proposed,
       draggable: draggable,
       droppable: destination,
       draggables: draggables,
-      onLift: onLift
+      afterCritical: afterCritical
     });
     var withPlaceholder = isHomeOf(draggable, destination) ? destination : addPlaceholder(destination, draggable, draggables);
     var isVisibleInNewLocation = isTotallyVisibleInNewLocation({
@@ -2448,45 +2203,32 @@ var moveToNewDroppable = (function (_ref) {
     return isVisibleInNewLocation ? proposed : null;
   }
 
-  var isGoingBeforeTarget = Boolean(previousPageBorderBoxCenter[destination.axis.line] < moveRelativeTo.page.borderBox.center[destination.axis.line]);
-  var targetIndex = insideDestination.indexOf(moveRelativeTo);
-  !(targetIndex !== -1) ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot find target in list') : invariant(false) : void 0;
+  var isGoingBeforeTarget = Boolean(previousPageBorderBoxCenter[destination.axis.line] <= moveRelativeTo.page.borderBox.center[destination.axis.line]);
 
   var proposedIndex = function () {
+    var relativeTo = moveRelativeTo.descriptor.index;
+
     if (moveRelativeTo.descriptor.id === draggable.descriptor.id) {
-      return targetIndex;
+      return relativeTo;
     }
 
     if (isGoingBeforeTarget) {
-      return targetIndex;
+      return relativeTo;
     }
 
-    return targetIndex + 1;
+    return relativeTo + 1;
   }();
 
-  var displaced = removeDraggableFromList(draggable, insideDestination).slice(proposedIndex).map(function (dimension) {
-    return getDisplacement({
-      draggable: dimension,
-      destination: destination,
-      viewport: viewport.frame,
-      previousImpact: previousImpact,
-      onLift: onLift
-    });
-  });
   var displacedBy = getDisplacedBy(destination.axis, draggable.displaceBy);
-  var impact = {
-    movement: {
-      displacedBy: displacedBy,
-      displaced: displaced,
-      map: getDisplacementMap(displaced)
-    },
-    destination: {
-      droppableId: destination.descriptor.id,
-      index: proposedIndex
-    },
-    merge: null
-  };
-  return impact;
+  return calculateReorderImpact({
+    draggable: draggable,
+    insideDestination: insideDestination,
+    destination: destination,
+    viewport: viewport,
+    displacedBy: displacedBy,
+    last: emptyGroups,
+    index: proposedIndex
+  });
 });
 
 var moveCrossAxis = (function (_ref) {
@@ -2496,9 +2238,8 @@ var moveCrossAxis = (function (_ref) {
       isOver = _ref.isOver,
       draggables = _ref.draggables,
       droppables = _ref.droppables,
-      previousImpact = _ref.previousImpact,
       viewport = _ref.viewport,
-      onLift = _ref.onLift;
+      afterCritical = _ref.afterCritical;
   var destination = getBestCrossAxisDroppable({
     isMovingForward: isMovingForward,
     pageBorderBoxCenter: previousPageBorderBoxCenter,
@@ -2517,7 +2258,7 @@ var moveCrossAxis = (function (_ref) {
     viewport: viewport,
     destination: destination,
     insideDestination: insideDestination,
-    onLift: onLift
+    afterCritical: afterCritical
   });
   var impact = moveToNewDroppable({
     previousPageBorderBoxCenter: previousPageBorderBoxCenter,
@@ -2526,9 +2267,8 @@ var moveCrossAxis = (function (_ref) {
     draggables: draggables,
     moveRelativeTo: moveRelativeTo,
     insideDestination: insideDestination,
-    previousImpact: previousImpact,
     viewport: viewport,
-    onLift: onLift
+    afterCritical: afterCritical
   });
 
   if (!impact) {
@@ -2540,7 +2280,7 @@ var moveCrossAxis = (function (_ref) {
     draggable: draggable,
     droppable: destination,
     draggables: draggables,
-    onLift: onLift
+    afterCritical: afterCritical
   });
   var clientSelection = getClientFromPageBorderBoxCenter({
     pageBorderBoxCenter: pageBorderBoxCenter,
@@ -2588,7 +2328,7 @@ var moveInDirection = (function (_ref) {
     viewport: state.viewport,
     previousClientSelection: state.current.client.selection,
     previousImpact: state.impact,
-    onLift: state.onLift
+    afterCritical: state.afterCritical
   }) : moveCrossAxis({
     isMovingForward: isMovingForward,
     previousPageBorderBoxCenter: previousPageBorderBoxCenter,
@@ -2596,9 +2336,8 @@ var moveInDirection = (function (_ref) {
     isOver: isOver,
     draggables: draggables,
     droppables: droppables,
-    previousImpact: state.impact,
     viewport: state.viewport,
-    onLift: state.onLift
+    afterCritical: state.afterCritical
   });
 });
 
@@ -2677,7 +2416,7 @@ var update = (function (_ref) {
     previousImpact: state.impact,
     viewport: viewport,
     userDirection: userDirection,
-    onLift: state.onLift
+    afterCritical: state.afterCritical
   });
   var withUpdatedPlaceholders = recomputePlaceholders({
     draggable: draggable,
@@ -2703,24 +2442,31 @@ var update = (function (_ref) {
   return result;
 });
 
+function getDraggables$1(ids, draggables) {
+  return ids.map(function (id) {
+    return draggables[id];
+  });
+}
+
 var recompute = (function (_ref) {
   var impact = _ref.impact,
       viewport = _ref.viewport,
-      destination = _ref.destination,
       draggables = _ref.draggables,
-      onLift = _ref.onLift,
+      destination = _ref.destination,
       forceShouldAnimate = _ref.forceShouldAnimate;
-  var updated = impact.movement.displaced.map(function (entry) {
-    return getDisplacement({
-      draggable: draggables[entry.draggableId],
-      destination: destination,
-      previousImpact: impact,
-      viewport: viewport.frame,
-      onLift: onLift,
-      forceShouldAnimate: forceShouldAnimate
-    });
+  var last = impact.displaced;
+  var afterDragging = getDraggables$1(last.all, draggables);
+  var displaced = getDisplacementGroups({
+    afterDragging: afterDragging,
+    destination: destination,
+    displacedBy: impact.displacedBy,
+    viewport: viewport.frame,
+    forceShouldAnimate: forceShouldAnimate,
+    last: last
   });
-  return withNewDisplacement(impact, updated);
+  return _extends({}, impact, {
+    displaced: displaced
+  });
 });
 
 var getClientBorderBoxCenter = (function (_ref) {
@@ -2729,13 +2475,13 @@ var getClientBorderBoxCenter = (function (_ref) {
       droppable = _ref.droppable,
       draggables = _ref.draggables,
       viewport = _ref.viewport,
-      onLift = _ref.onLift;
+      afterCritical = _ref.afterCritical;
   var pageBorderBoxCenter = getPageBorderBoxCenterFromImpact({
     impact: impact,
     draggable: draggable,
     draggables: draggables,
     droppable: droppable,
-    onLift: onLift
+    afterCritical: afterCritical
   });
   return getClientFromPageBorderBoxCenter({
     pageBorderBoxCenter: pageBorderBoxCenter,
@@ -2762,8 +2508,7 @@ var refreshSnap = (function (_ref) {
     impact: needsVisibilityCheck,
     viewport: viewport,
     destination: destination,
-    draggables: draggables,
-    onLift: state.onLift
+    draggables: draggables
   });
   var clientSelection = getClientBorderBoxCenter({
     impact: impact,
@@ -2771,7 +2516,7 @@ var refreshSnap = (function (_ref) {
     droppable: destination,
     draggables: draggables,
     viewport: viewport,
-    onLift: state.onLift
+    afterCritical: state.afterCritical
   });
   return update({
     impact: impact,
@@ -2787,6 +2532,81 @@ var patchDimensionMap = (function (dimensions, updated) {
     draggables: dimensions.draggables,
     droppables: patchDroppableMap(dimensions.droppables, updated)
   };
+});
+
+var timingsKey = 'Processing dynamic changes';
+var publishWhileDraggingInVirtual = (function (_ref) {
+  var _extends2, _extends3;
+
+  var state = _ref.state,
+      published = _ref.published;
+  start(timingsKey);
+  var withScrollChange = published.modified.map(function (droppable) {
+    var existing = state.dimensions.droppables[droppable.descriptor.id];
+    var frame = existing.frame;
+
+    if (!frame) {
+      return droppable;
+    }
+
+    var scrolled = scrollDroppable(existing, frame.scroll.current);
+    return scrolled;
+  });
+
+  var droppables = _extends({}, state.dimensions.droppables, {}, toDroppableMap(withScrollChange));
+
+  var updated = adjustAdditionsForScrollChanges({
+    additions: published.additions,
+    updatedDroppables: droppables,
+    viewport: state.viewport
+  });
+
+  var draggables = _extends({}, state.dimensions.draggables, {}, toDraggableMap(updated));
+
+  published.removals.forEach(function (id) {
+    delete draggables[id];
+  });
+  var dimensions = {
+    droppables: droppables,
+    draggables: draggables
+  };
+  var draggable = dimensions.draggables[state.critical.draggable.id];
+  var home = dimensions.droppables[state.critical.droppable.id];
+
+  var _getLiftEffect = getLiftEffect({
+    draggable: draggable,
+    home: home,
+    draggables: draggables,
+    viewport: state.viewport
+  }),
+      onLiftImpact = _getLiftEffect.impact,
+      afterCritical = _getLiftEffect.afterCritical;
+
+  var impact = getDragImpact({
+    pageBorderBoxCenter: state.current.page.borderBoxCenter,
+    draggable: dimensions.draggables[state.critical.draggable.id],
+    draggables: dimensions.draggables,
+    droppables: dimensions.droppables,
+    previousImpact: state.impact,
+    viewport: state.viewport,
+    userDirection: state.userDirection,
+    afterCritical: afterCritical
+  });
+  finish(timingsKey);
+
+  var draggingState = _extends({
+    phase: 'DRAGGING'
+  }, state, (_extends2 = {}, _extends2["phase"] = 'DRAGGING', _extends2.impact = impact, _extends2.onLiftImpact = onLiftImpact, _extends2.dimensions = dimensions, _extends2.afterCritical = afterCritical, _extends2.forceShouldAnimate = false, _extends2));
+
+  if (state.phase === 'COLLECTING') {
+    return draggingState;
+  }
+
+  var dropPending = _extends({
+    phase: 'DROP_PENDING'
+  }, draggingState, (_extends3 = {}, _extends3["phase"] = 'DROP_PENDING', _extends3.reason = state.reason, _extends3.isWaiting = false, _extends3));
+
+  return dropPending;
 });
 
 var isSnapping = function isSnapping(state) {
@@ -2851,14 +2671,14 @@ var reducer = (function (state, action) {
       return !item.isFixedOnPage;
     }) || true;
 
-    var _getHomeOnLift = getHomeOnLift({
+    var _getLiftEffect = getLiftEffect({
       draggable: draggable,
       home: home,
       draggables: dimensions.draggables,
       viewport: viewport
     }),
-        impact = _getHomeOnLift.impact,
-        onLift = _getHomeOnLift.onLift;
+        impact = _getLiftEffect.impact,
+        afterCritical = _getLiftEffect.afterCritical;
 
     var result = {
       phase: 'DRAGGING',
@@ -2870,7 +2690,7 @@ var reducer = (function (state, action) {
       current: initial,
       isWindowScrollAllowed: isWindowScrollAllowed,
       impact: impact,
-      onLift: onLift,
+      afterCritical: afterCritical,
       onLiftImpact: impact,
       viewport: viewport,
       userDirection: forward,
@@ -2898,7 +2718,7 @@ var reducer = (function (state, action) {
 
   if (action.type === 'PUBLISH_WHILE_DRAGGING') {
     !(state.phase === 'COLLECTING' || state.phase === 'DROP_PENDING') ? process.env.NODE_ENV !== "production" ? invariant(false, "Unexpected " + action.type + " received in phase " + state.phase) : invariant(false) : void 0;
-    return publishWhileDragging({
+    return publishWhileDraggingInVirtual({
       state: state,
       published: action.payload
     });
@@ -3059,10 +2879,10 @@ var reducer = (function (state, action) {
     !(state.phase === 'DRAGGING' || state.phase === 'DROP_PENDING') ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot animate drop from phase " + state.phase) : invariant(false) : void 0;
     var _result3 = {
       phase: 'DROP_ANIMATING',
-      dimensions: state.dimensions,
       completed: completed,
       dropDuration: dropDuration,
-      newHomeClientOffset: newHomeClientOffset
+      newHomeClientOffset: newHomeClientOffset,
+      dimensions: state.dimensions
     };
     return _result3;
   }
@@ -3093,7 +2913,7 @@ var initialPublish = function initialPublish(args) {
     payload: args
   };
 };
-var publishWhileDragging$1 = function publishWhileDragging(args) {
+var publishWhileDragging = function publishWhileDragging(args) {
   return {
     type: 'PUBLISH_WHILE_DRAGGING',
     payload: args
@@ -3208,6 +3028,44 @@ var dropAnimationFinished = function dropAnimationFinished() {
   };
 };
 
+function checkIndexesAreConsecutive(droppableId, draggables) {
+  var insideDestination = getDraggablesInsideDroppable(droppableId, draggables);
+
+  if (insideDestination.length <= 1) {
+    return;
+  }
+
+  var indexes = insideDestination.map(function (d) {
+    return d.descriptor.index;
+  });
+  var errors = {};
+
+  for (var i = 1; i < indexes.length; i++) {
+    var current = indexes[i];
+    var previous = indexes[i - 1];
+
+    if (current !== previous + 1) {
+      errors[current] = true;
+    }
+  }
+
+  if (!_Object$keys(errors).length) {
+    return;
+  }
+
+  var formatted = indexes.map(function (index) {
+    var hasError = Boolean(errors[index]);
+    return hasError ? "[\uD83D\uDD25" + index + "]" : "" + index;
+  }).join(', ');
+  process.env.NODE_ENV !== "production" ? warning("\n    Detected non-consecutive Draggable indexes\n\n    (This can cause unexpected bugs)\n\n    " + formatted + "\n  ") : void 0;
+}
+
+function validateDimensions(critical, dimensions) {
+  if (process.env.NODE_ENV !== 'production') {
+    checkIndexesAreConsecutive(critical.droppable.id, dimensions.draggables);
+  }
+}
+
 var lift$1 = (function (marshal) {
   return function (_ref) {
     var getState = _ref.getState,
@@ -3246,6 +3104,7 @@ var lift$1 = (function (marshal) {
             dimensions = _marshal$startPublish.dimensions,
             viewport = _marshal$startPublish.viewport;
 
+        validateDimensions(critical, dimensions);
         dispatch(initialPublish({
           critical: critical,
           dimensions: dimensions,
@@ -3361,7 +3220,7 @@ var getNewHomeClientOffset = (function (_ref) {
       draggable = _ref.draggable,
       dimensions = _ref.dimensions,
       viewport = _ref.viewport,
-      onLift = _ref.onLift;
+      afterCritical = _ref.afterCritical;
   var draggables = dimensions.draggables,
       droppables = dimensions.droppables;
   var droppableId = whatIsDraggedOver(impact);
@@ -3371,59 +3230,50 @@ var getNewHomeClientOffset = (function (_ref) {
     impact: impact,
     draggable: draggable,
     draggables: draggables,
-    onLift: onLift,
+    afterCritical: afterCritical,
     droppable: destination || home,
     viewport: viewport
   });
   var offset = subtract(newClientCenter, draggable.client.borderBox.center);
-  var merge = impact.merge;
-
-  if (merge && didStartDisplaced(merge.combine.draggableId, onLift)) {
-    return subtract(offset, onLift.displacedBy.point);
-  }
-
   return offset;
 });
 
 var getDropImpact = (function (_ref) {
-  var reason = _ref.reason,
+  var draggables = _ref.draggables,
+      reason = _ref.reason,
       lastImpact = _ref.lastImpact,
       home = _ref.home,
       viewport = _ref.viewport,
-      draggables = _ref.draggables,
-      onLiftImpact = _ref.onLiftImpact,
-      onLift = _ref.onLift;
-  var didDropInsideDroppable = reason === 'DROP' && Boolean(whatIsDraggedOver(lastImpact));
+      onLiftImpact = _ref.onLiftImpact;
 
-  if (!didDropInsideDroppable) {
-    var impact = recompute({
+  if (!lastImpact.at || reason !== 'DROP') {
+    var recomputedHomeImpact = recompute({
+      draggables: draggables,
       impact: onLiftImpact,
       destination: home,
       viewport: viewport,
-      draggables: draggables,
-      onLift: onLift,
       forceShouldAnimate: true
     });
     return {
-      impact: impact,
-      didDropInsideDroppable: didDropInsideDroppable
+      impact: recomputedHomeImpact,
+      didDropInsideDroppable: false
     };
   }
 
-  if (lastImpact.destination) {
+  if (lastImpact.at.type === 'REORDER') {
     return {
       impact: lastImpact,
-      didDropInsideDroppable: didDropInsideDroppable
+      didDropInsideDroppable: true
     };
   }
 
   var withoutMovement = _extends({}, lastImpact, {
-    movement: noMovement
+    displaced: emptyGroups
   });
 
   return {
     impact: withoutMovement,
-    didDropInsideDroppable: didDropInsideDroppable
+    didDropInsideDroppable: true
   };
 });
 
@@ -3456,11 +3306,12 @@ var drop$1 = (function (_ref) {
       !(state.phase === 'DRAGGING' || state.phase === 'DROP_PENDING') ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot drop in phase: " + state.phase) : invariant(false) : void 0;
       var critical = state.critical;
       var dimensions = state.dimensions;
+      var draggable = dimensions.draggables[state.critical.draggable.id];
 
       var _getDropImpact = getDropImpact({
         reason: reason,
         lastImpact: state.impact,
-        onLift: state.onLift,
+        afterCritical: state.afterCritical,
         onLiftImpact: state.onLiftImpact,
         home: state.dimensions.droppables[state.critical.droppable.id],
         viewport: state.viewport,
@@ -3469,9 +3320,8 @@ var drop$1 = (function (_ref) {
           impact = _getDropImpact.impact,
           didDropInsideDroppable = _getDropImpact.didDropInsideDroppable;
 
-      var draggable = dimensions.draggables[state.critical.draggable.id];
-      var destination = didDropInsideDroppable ? impact.destination : null;
-      var combine = didDropInsideDroppable && impact.merge ? impact.merge.combine : null;
+      var destination = didDropInsideDroppable ? tryGetDestination(impact) : null;
+      var combine = didDropInsideDroppable ? tryGetCombine(impact) : null;
       var source = {
         index: critical.draggable.index,
         droppableId: critical.droppable.id
@@ -3490,10 +3340,11 @@ var drop$1 = (function (_ref) {
         draggable: draggable,
         dimensions: dimensions,
         viewport: state.viewport,
-        onLift: state.onLift
+        afterCritical: state.afterCritical
       });
       var completed = {
         critical: state.critical,
+        afterCritical: state.afterCritical,
         result: result,
         impact: impact
       };
@@ -3522,80 +3373,111 @@ var drop$1 = (function (_ref) {
   };
 });
 
-var position = function position(index) {
-  return index + 1;
-};
+function getOptions(shared, fromBinding) {
+  return _extends({}, shared, {}, fromBinding);
+}
 
-var onDragStart = function onDragStart(start) {
-  return "\n  You have lifted an item in position " + position(start.source.index) + ".\n  Use the arrow keys to move, space bar to drop, and escape to cancel.\n";
-};
+function bindEvents(el, bindings, sharedOptions) {
+  var unbindings = bindings.map(function (binding) {
+    var options = getOptions(sharedOptions, binding.options);
+    el.addEventListener(binding.eventName, binding.fn, options);
+    return function unbind() {
+      el.removeEventListener(binding.eventName, binding.fn, options);
+    };
+  });
+  return function unbindAll() {
+    unbindings.forEach(function (unbind) {
+      unbind();
+    });
+  };
+}
 
-var withLocation = function withLocation(source, destination) {
-  var isInHomeList = source.droppableId === destination.droppableId;
-  var startPosition = position(source.index);
-  var endPosition = position(destination.index);
+var getWindowScroll = (function () {
+  return {
+    x: window.pageXOffset,
+    y: window.pageYOffset
+  };
+});
 
-  if (isInHomeList) {
-    return "\n      You have moved the item from position " + startPosition + "\n      to position " + endPosition + "\n    ";
+function noop() {}
+
+function getWindowScrollBinding(update) {
+  return {
+    eventName: 'scroll',
+    options: {
+      passive: true,
+      capture: false
+    },
+    fn: function fn(event) {
+      if (event.currentTarget !== window) {
+        return;
+      }
+
+      update();
+    }
+  };
+}
+
+function getScrollListener(_ref) {
+  var onWindowScroll = _ref.onWindowScroll;
+
+  function updateScroll() {
+    onWindowScroll(getWindowScroll());
   }
 
-  return "\n    You have moved the item from position " + startPosition + "\n    in list " + source.droppableId + "\n    to list " + destination.droppableId + "\n    in position " + endPosition + "\n  ";
-};
+  var scheduled = rafSchd(updateScroll);
+  var binding = getWindowScrollBinding(scheduled);
+  var unbind = noop;
 
-var withCombine = function withCombine(id, source, combine) {
-  var inHomeList = source.droppableId === combine.droppableId;
-
-  if (inHomeList) {
-    return "\n      The item " + id + "\n      has been combined with " + combine.draggableId;
+  function isActive() {
+    return unbind !== noop;
   }
 
-  return "\n      The item " + id + "\n      in list " + source.droppableId + "\n      has been combined with " + combine.draggableId + "\n      in list " + combine.droppableId + "\n    ";
-};
-
-var onDragUpdate = function onDragUpdate(update) {
-  var location = update.destination;
-
-  if (location) {
-    return withLocation(update.source, location);
+  function start() {
+    !!isActive() ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot start scroll listener when already active') : invariant(false) : void 0;
+    unbind = bindEvents(window, [binding]);
   }
 
-  var combine = update.combine;
-
-  if (combine) {
-    return withCombine(update.draggableId, update.source, combine);
+  function stop() {
+    !isActive() ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot stop scroll listener when not active') : invariant(false) : void 0;
+    scheduled.cancel();
+    unbind();
+    unbind = noop;
   }
 
-  return 'You are over an area that cannot be dropped on';
+  return {
+    start: start,
+    stop: stop,
+    isActive: isActive
+  };
+}
+
+var shouldEnd = function shouldEnd(action) {
+  return action.type === 'DROP_COMPLETE' || action.type === 'DROP_ANIMATE' || action.type === 'CLEAN';
 };
 
-var returnedToStart = function returnedToStart(source) {
-  return "\n  The item has returned to its starting position\n  of " + position(source.index) + "\n";
-};
+var scrollListener = (function (store) {
+  var listener = getScrollListener({
+    onWindowScroll: function onWindowScroll(newScroll) {
+      store.dispatch(moveByWindowScroll({
+        newScroll: newScroll
+      }));
+    }
+  });
+  return function (next) {
+    return function (action) {
+      if (!listener.isActive() && action.type === 'INITIAL_PUBLISH') {
+        listener.start();
+      }
 
-var onDragEnd = function onDragEnd(result) {
-  if (result.reason === 'CANCEL') {
-    return "\n      Movement cancelled.\n      " + returnedToStart(result.source) + "\n    ";
-  }
+      if (listener.isActive() && shouldEnd(action)) {
+        listener.stop();
+      }
 
-  var location = result.destination;
-  var combine = result.combine;
-
-  if (location) {
-    return "\n      You have dropped the item.\n      " + withLocation(result.source, location) + "\n    ";
-  }
-
-  if (combine) {
-    return "\n      You have dropped the item.\n      " + withCombine(result.draggableId, result.source, combine) + "\n    ";
-  }
-
-  return "\n    The item has been dropped while not over a drop area.\n    " + returnedToStart(result.source) + "\n  ";
-};
-
-var preset = {
-  onDragStart: onDragStart,
-  onDragUpdate: onDragUpdate,
-  onDragEnd: onDragEnd
-};
+      next(action);
+    };
+  };
+});
 
 var getExpiringAnnounce = (function (announce) {
   var wasCalled = false;
@@ -3771,8 +3653,8 @@ var getPublisher = (function (getResponders, announce) {
   };
 
   var update = function update(critical, impact) {
-    var location = impact.destination;
-    var combine = impact.merge ? impact.merge.combine : null;
+    var location = tryGetDestination(impact);
+    var combine = tryGetCombine(impact);
     !dragging ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot fire onDragMove when onDragStart has not been called') : invariant(false) : void 0;
     var hasCriticalChanged = !isCriticalEqual(critical, dragging.lastCritical);
 
@@ -3901,6 +3783,55 @@ var dropAnimationFinish = (function (store) {
   };
 });
 
+var dropAnimationFlushOnScroll = (function (store) {
+  var unbind = null;
+  var frameId = null;
+
+  function clear() {
+    if (frameId) {
+      cancelAnimationFrame(frameId);
+      frameId = null;
+    }
+
+    if (unbind) {
+      unbind();
+      unbind = null;
+    }
+  }
+
+  return function (next) {
+    return function (action) {
+      if (action.type === 'CLEAN' || action.type === 'DROP_COMPLETE' || action.type === 'DROP_ANIMATION_FINISHED') {
+        clear();
+      }
+
+      next(action);
+
+      if (action.type !== 'DROP_ANIMATE') {
+        return;
+      }
+
+      var binding = {
+        eventName: 'scroll',
+        options: {
+          capture: true,
+          passive: false
+        },
+        fn: function flushDropAnimation() {
+          var state = store.getState();
+
+          if (state.phase === 'DROP_ANIMATING') {
+            store.dispatch(dropAnimationFinished());
+          }
+        }
+      };
+      frameId = requestAnimationFrame(function () {
+        unbind = bindEvents(window, [binding]);
+      });
+    };
+  };
+});
+
 var dimensionMarshalStopper = (function (marshal) {
   return function () {
     return function (next) {
@@ -3915,7 +3846,47 @@ var dimensionMarshalStopper = (function (marshal) {
   };
 });
 
-var shouldEnd = function shouldEnd(action) {
+var focus = (function (marshal) {
+  var isWatching = false;
+  return function () {
+    return function (next) {
+      return function (action) {
+        if (action.type === 'INITIAL_PUBLISH') {
+          isWatching = true;
+          marshal.tryRecordFocus(action.payload.critical.draggable.id);
+          next(action);
+          marshal.tryRestoreFocusRecorded();
+          return;
+        }
+
+        next(action);
+
+        if (!isWatching) {
+          return;
+        }
+
+        if (action.type === 'CLEAN') {
+          isWatching = false;
+          marshal.tryRestoreFocusRecorded();
+          return;
+        }
+
+        if (action.type === 'DROP_COMPLETE') {
+          isWatching = false;
+          var result = action.payload.completed.result;
+
+          if (result.combine) {
+            marshal.tryShiftRecord(result.draggableId, result.combine.draggableId);
+          }
+
+          marshal.tryRestoreFocusRecorded();
+        }
+      };
+    };
+  };
+});
+
+var shouldStop = function shouldStop(action) {
   return action.type === 'DROP_COMPLETE' || action.type === 'DROP_ANIMATE' || action.type === 'CLEAN';
 };
 
@@ -3927,7 +3898,7 @@ var autoScroll = (function (autoScroller) {
   return function (store) {
     return function (next) {
       return function (action) {
-        if (shouldEnd(action)) {
+        if (shouldStop(action)) {
           autoScroller.stop();
           next(action);
           return;
@@ -3983,11 +3954,12 @@ var pendingDrop = (function (store) {
 var composeEnhancers = process.env.NODE_ENV !== 'production' && typeof window !== 'undefined' && window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__ ? window.__REDUX_DEVTOOLS_EXTENSION_COMPOSE__ : compose;
 var createStore = (function (_ref) {
   var dimensionMarshal = _ref.dimensionMarshal,
+      focusMarshal = _ref.focusMarshal,
       styleMarshal = _ref.styleMarshal,
       getResponders = _ref.getResponders,
       announce = _ref.announce,
       autoScroller = _ref.autoScroller;
-  return createStore$1(reducer, composeEnhancers(applyMiddleware(style(styleMarshal), dimensionMarshalStopper(dimensionMarshal), lift$1(dimensionMarshal), drop$1, dropAnimationFinish, pendingDrop, autoScroll(autoScroller), responders(getResponders, announce))));
+  return createStore$1(reducer, composeEnhancers(applyMiddleware(style(styleMarshal), dimensionMarshalStopper(dimensionMarshal), lift$1(dimensionMarshal), drop$1, dropAnimationFinish, dropAnimationFlushOnScroll, pendingDrop, autoScroll(autoScroller), scrollListener, focus(focusMarshal), responders(getResponders, announce))));
 });
 
 var clean$2 = function clean() {
@@ -3999,8 +3971,8 @@ var clean$2 = function clean() {
 };
 
 var timingKey = 'Publish collection from DOM';
-var createPublisher = (function (_ref) {
-  var getEntries = _ref.getEntries,
+function createPublisher(_ref) {
+  var registry = _ref.registry,
       callbacks = _ref.callbacks;
 
   var advancedUsageWarning = function () {
@@ -4034,21 +4006,19 @@ var createPublisher = (function (_ref) {
       callbacks.collectionStarting();
       var critical = callbacks.getCritical();
       start(timingKey);
-      var entries = getEntries();
       var _staging = staging,
           additions = _staging.additions,
           removals = _staging.removals,
           modified = _staging.modified;
 
       var added = _Object$keys(additions).map(function (id) {
-        return entries.draggables[id].getDimension(origin);
+        return registry.draggable.getById(id).getDimension(origin);
       }).sort(function (a, b) {
         return a.descriptor.index - b.descriptor.index;
       });
 
       var updated = _Object$keys(modified).map(function (id) {
-        var entry = entries.droppables[id];
-        !entry ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot find dynamically added droppable in cache') : invariant(false) : void 0;
+        var entry = registry.droppable.getById(id);
         var isHome = entry.descriptor.id === critical.droppable.id;
         var options = {
           withoutPlaceholder: !isHome
@@ -4067,19 +4037,20 @@ var createPublisher = (function (_ref) {
     });
   };
 
-  var add = function add(descriptor) {
-    staging.additions[descriptor.id] = descriptor;
-    staging.modified[descriptor.droppableId] = true;
+  var add = function add(entry) {
+    var id = entry.descriptor.id;
+    staging.additions[id] = entry;
+    staging.modified[entry.descriptor.droppableId] = true;
 
-    if (staging.removals[descriptor.id]) {
-      delete staging.removals[descriptor.id];
+    if (staging.removals[id]) {
+      delete staging.removals[id];
     }
 
     collect();
   };
 
   var remove = function remove(descriptor) {
-    staging.removals[descriptor.id] = descriptor;
+    staging.removals[descriptor.id] = true;
     staging.modified[descriptor.droppableId] = true;
 
     if (staging.additions[descriptor.id]) {
@@ -4104,14 +4075,7 @@ var createPublisher = (function (_ref) {
     remove: remove,
     stop: stop
   };
-});
-
-var getWindowScroll = (function () {
-  return {
-    x: window.pageXOffset,
-    y: window.pageYOffset
-  };
-});
+}
 
 var getDocumentElement = (function () {
   var doc = document.documentElement;
@@ -4218,21 +4182,17 @@ var getContainerViewport = (function (container) {
 var getInitialPublish = (function (_ref) {
   var critical = _ref.critical,
       scrollOptions = _ref.scrollOptions,
-      entries = _ref.entries,
+      registry = _ref.registry,
       getContainer = _ref.getContainer;
   var timingKey = 'Initial collection from DOM';
   start(timingKey);
   var viewport = getContainer() ? getContainerViewport(getContainer()) : getViewport();
   var windowScroll = viewport.scroll.current;
   var home = critical.droppable;
-  var droppables = values(entries.droppables).filter(function (entry) {
-    return entry.descriptor.type === home.type;
-  }).map(function (entry) {
+  var droppables = registry.droppable.getAllByType(home.type).map(function (entry) {
     return entry.callbacks.getDimensionAndWatchScroll(windowScroll, scrollOptions);
   });
-  var draggables = values(entries.draggables).filter(function (entry) {
-    return entry.descriptor.type === critical.draggable.type;
-  }).map(function (entry) {
+  var draggables = registry.draggable.getAllByType(critical.draggable.type).map(function (entry) {
     return entry.getDimension(windowScroll);
   });
   var dimensions = {
@@ -4248,19 +4208,11 @@ var getInitialPublish = (function (_ref) {
   return result;
 });
 
-var throwIfAddOrRemoveOfWrongType = function throwIfAddOrRemoveOfWrongType(collection, descriptor) {
-  !(collection.critical.draggable.type === descriptor.type) ? process.env.NODE_ENV !== "production" ? invariant(false, "We have detected that you have added a Draggable during a drag.\n      This is not of the same type as the dragging item\n\n      Dragging type: " + collection.critical.draggable.type + ".\n      Added type: " + descriptor.type + "\n\n      We are not allowing this as you can run into problems if your change\n      has shifted the positioning of other Droppables, or has changed the size of the page") : invariant(false) : void 0;
-};
-
-var createDimensionMarshal = (function (callbacks, _temp) {
+var createDimensionMarshal = (function (registry, callbacks, _temp) {
   var _ref = _temp === void 0 ? {} : _temp,
       _ref$getContainer = _ref.getContainer,
       getContainer = _ref$getContainer === void 0 ? function () {} : _ref$getContainer;
 
-  var entries = {
-    droppables: {},
-    draggables: {}
-  };
   var collection = null;
   var publisher = createPublisher({
     callbacks: {
@@ -4271,85 +4223,11 @@ var createDimensionMarshal = (function (callbacks, _temp) {
         return collection.critical;
       }
     },
-    getEntries: function getEntries() {
-      return entries;
-    }
+    registry: registry
   });
 
-  var registerDraggable = function registerDraggable(descriptor, getDimension) {
-    var entry = {
-      descriptor: descriptor,
-      getDimension: getDimension
-    };
-    entries.draggables[descriptor.id] = entry;
-
-    if (!collection) {
-      return;
-    }
-
-    throwIfAddOrRemoveOfWrongType(collection, descriptor);
-    publisher.add(descriptor);
-  };
-
-  var updateDraggable = function updateDraggable(published, descriptor, getDimension) {
-    var existing = entries.draggables[published.id];
-    !existing ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot update draggable registration as no published registration was found') : invariant(false) : void 0;
-
-    if (existing.descriptor === published) {
-      delete entries.draggables[published.id];
-    } else {
-      process.env.NODE_ENV !== "production" ? warning("\n        Detected incorrect usage of 'key' on '<Draggable draggableId=\"" + published.id + "\"$ />\n\n        Your 'key' should be:\n        - Unique for each Draggable in a list\n        - Not be based on the index of the Draggable\n\n        Usually you want your 'key' to just be the 'draggableId'\n\n        More information: https://github.com/atlassian/react-beautiful-dnd/blob/master/docs/api/draggable.md#keys-for-a-list-of-draggable-\n      ") : void 0;
-    }
-
-    var entry = {
-      descriptor: descriptor,
-      getDimension: getDimension
-    };
-    entries.draggables[descriptor.id] = entry;
-  };
-
-  var unregisterDraggable = function unregisterDraggable(descriptor) {
-    var entry = entries.draggables[descriptor.id];
-    !entry ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot unregister Draggable with id:\n      " + descriptor.id + " as it is not registered") : invariant(false) : void 0;
-
-    if (entry.descriptor !== descriptor) {
-      return;
-    }
-
-    delete entries.draggables[descriptor.id];
-
-    if (!collection) {
-      return;
-    }
-
-    !(collection.critical.draggable.id !== descriptor.id) ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot remove the dragging item during a drag') : invariant(false) : void 0;
-    throwIfAddOrRemoveOfWrongType(collection, descriptor);
-    publisher.remove(descriptor);
-  };
-
-  var registerDroppable = function registerDroppable(descriptor, droppableCallbacks) {
-    var id = descriptor.id;
-    entries.droppables[id] = {
-      descriptor: descriptor,
-      callbacks: droppableCallbacks
-    };
-    !!collection ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot add a Droppable during a drag') : invariant(false) : void 0;
-  };
-
-  var unregisterDroppable = function unregisterDroppable(descriptor) {
-    var entry = entries.droppables[descriptor.id];
-    !entry ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot unregister Droppable with id " + descriptor.id + " as as it is not registered") : invariant(false) : void 0;
-
-    if (entry.descriptor !== descriptor) {
-      return;
-    }
-
-    delete entries.droppables[descriptor.id];
-    !!collection ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot add a Droppable during a drag') : invariant(false) : void 0;
-  };
-
   var updateDroppableIsEnabled = function updateDroppableIsEnabled(id, isEnabled) {
-    !entries.droppables[id] ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot update is enabled flag of Droppable " + id + " as it is not registered") : invariant(false) : void 0;
+    !registry.droppable.exists(id) ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot update is enabled flag of Droppable " + id + " as it is not registered") : invariant(false) : void 0;
 
     if (!collection) {
       return;
@@ -4362,12 +4240,11 @@ var createDimensionMarshal = (function (callbacks, _temp) {
   };
 
   var updateDroppableIsCombineEnabled = function updateDroppableIsCombineEnabled(id, isCombineEnabled) {
-    !entries.droppables[id] ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot update isCombineEnabled flag of Droppable " + id + " as it is not registered") : invariant(false) : void 0;
-
     if (!collection) {
       return;
     }
 
+    !registry.droppable.exists(id) ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot update isCombineEnabled flag of Droppable " + id + " as it is not registered") : invariant(false) : void 0;
     callbacks.updateDroppableIsCombineEnabled({
       id: id,
       isCombineEnabled: isCombineEnabled
@@ -4375,12 +4252,11 @@ var createDimensionMarshal = (function (callbacks, _temp) {
   };
 
   var updateDroppableScroll = function updateDroppableScroll(id, newScroll) {
-    !entries.droppables[id] ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot update the scroll on Droppable " + id + " as it is not registered") : invariant(false) : void 0;
-
     if (!collection) {
       return;
     }
 
+    !registry.droppable.exists(id) ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot update the scroll on Droppable " + id + " as it is not registered") : invariant(false) : void 0;
     callbacks.updateDroppableScroll({
       id: id,
       offset: newScroll
@@ -4388,14 +4264,11 @@ var createDimensionMarshal = (function (callbacks, _temp) {
   };
 
   var scrollDroppable = function scrollDroppable(id, change) {
-    var entry = entries.droppables[id];
-    !entry ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot scroll Droppable " + id + " as it is not registered") : invariant(false) : void 0;
-
     if (!collection) {
       return;
     }
 
-    entry.callbacks.scroll(change);
+    registry.droppable.getById(id).callbacks.scroll(change);
   };
 
   var stopPublishing = function stopPublishing() {
@@ -4405,41 +4278,52 @@ var createDimensionMarshal = (function (callbacks, _temp) {
 
     publisher.stop();
     var home = collection.critical.droppable;
-    values(entries.droppables).filter(function (entry) {
-      return entry.descriptor.type === home.type;
-    }).forEach(function (entry) {
+    registry.droppable.getAllByType(home.type).forEach(function (entry) {
       return entry.callbacks.dragStopped();
     });
+    collection.unsubscribe();
     collection = null;
+  };
+
+  var subscriber = function subscriber(event) {
+    !collection ? process.env.NODE_ENV !== "production" ? invariant(false, 'Should only be subscribed when a collection is occurring') : invariant(false) : void 0;
+    var criticalId = collection.critical.draggable.id;
+
+    if (event.type === 'ADDITION') {
+      if (event.value.descriptor.id !== criticalId) {
+        publisher.add(event.value);
+      }
+    }
+
+    if (event.type === 'REMOVAL') {
+      if (event.value.id !== criticalId) {
+        publisher.remove(event.value);
+      }
+    }
   };
 
   var startPublishing = function startPublishing(request) {
     !!collection ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot start capturing critical dimensions as there is already a collection') : invariant(false) : void 0;
-    var entry = entries.draggables[request.draggableId];
-    !entry ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot find critical draggable entry') : invariant(false) : void 0;
-    var home = entries.droppables[entry.descriptor.droppableId];
-    !home ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot find critical droppable entry') : invariant(false) : void 0;
+    var entry = registry.draggable.getById(request.draggableId);
+    var home = registry.droppable.getById(entry.descriptor.droppableId);
     var critical = {
       draggable: entry.descriptor,
       droppable: home.descriptor
     };
+    var unsubscribe = registry.subscribe(subscriber);
     collection = {
-      critical: critical
+      critical: critical,
+      unsubscribe: unsubscribe
     };
     return getInitialPublish({
       critical: critical,
-      entries: entries,
+      registry: registry,
       scrollOptions: request.scrollOptions,
       getContainer: getContainer
     });
   };
 
   var marshal = {
-    registerDraggable: registerDraggable,
-    updateDraggable: updateDraggable,
-    unregisterDraggable: unregisterDraggable,
-    registerDroppable: registerDroppable,
-    unregisterDroppable: unregisterDroppable,
     updateDroppableIsEnabled: updateDroppableIsEnabled,
     updateDroppableIsCombineEnabled: updateDroppableIsCombineEnabled,
     scrollDroppable: scrollDroppable,
@@ -5121,10 +5005,34 @@ var createAutoScroller = (function (_ref) {
   return scroller;
 });
 
-var prefix = 'data-react-beautiful-dnd';
-var dragHandle = prefix + "-drag-handle";
-var draggable = prefix + "-draggable";
-var droppable = prefix + "-droppable";
+var prefix = 'data-rbd';
+var dragHandle = function () {
+  var base = prefix + "-drag-handle";
+  return {
+    base: base,
+    draggableId: base + "-draggable-id",
+    contextId: base + "-context-id"
+  };
+}();
+var draggable = function () {
+  var base = prefix + "-draggable";
+  return {
+    base: base,
+    contextId: base + "-context-id",
+    id: base + "-id"
+  };
+}();
+var droppable = function () {
+  var base = prefix + "-droppable";
+  return {
+    base: base,
+    contextId: base + "-context-id",
+    id: base + "-id"
+  };
+}();
+var scrollContainer$1 = {
+  contextId: prefix + "-scroll-container-context-id"
+};
 
 var makeGetSelector = function makeGetSelector(context) {
   return function (attribute) {
@@ -5145,13 +5053,13 @@ var getStyles = function getStyles(rules, property) {
 };
 
 var noPointerEvents = 'pointer-events: none;';
-var getStyles$1 = (function (uniqueContext) {
-  var getSelector = makeGetSelector(uniqueContext);
+var getStyles$1 = (function (contextId) {
+  var getSelector = makeGetSelector(contextId);
 
   var dragHandle$1 = function () {
     var grabCursor = "\n      cursor: -webkit-grab;\n      cursor: grab;\n    ";
     return {
-      selector: getSelector(dragHandle),
+      selector: getSelector(dragHandle.contextId),
       styles: {
         always: "\n          -webkit-touch-callout: none;\n          -webkit-tap-highlight-color: rgba(0,0,0,0);\n          touch-action: manipulation;\n        ",
         resting: grabCursor,
@@ -5164,7 +5072,7 @@ var getStyles$1 = (function (uniqueContext) {
   var draggable$1 = function () {
     var transition = "\n      transition: " + transitions.outOfTheWay + ";\n    ";
     return {
-      selector: getSelector(draggable),
+      selector: getSelector(draggable.contextId),
       styles: {
         dragging: transition,
         dropAnimating: transition,
@@ -5174,7 +5082,7 @@ var getStyles$1 = (function (uniqueContext) {
   }();
 
   var droppable$1 = {
-    selector: getSelector(droppable),
+    selector: getSelector(droppable.contextId),
     styles: {
       always: "overflow-anchor: none;"
     }
@@ -5209,13 +5117,10 @@ var createStyleEl = function createStyleEl() {
   return el;
 };
 
-function useStyleMarshal(uniqueId) {
-  var uniqueContext = useMemo(function () {
-    return "" + uniqueId;
-  }, [uniqueId]);
+function useStyleMarshal(contextId) {
   var styles = useMemo(function () {
-    return getStyles$1(uniqueContext);
-  }, [uniqueContext]);
+    return getStyles$1(contextId);
+  }, [contextId]);
   var alwaysRef = useRef(null);
   var dynamicRef = useRef(null);
   var setDynamicStyle = useCallback(memoizeOne(function (proposed) {
@@ -5234,8 +5139,8 @@ function useStyleMarshal(uniqueId) {
     var dynamic = createStyleEl();
     alwaysRef.current = always;
     dynamicRef.current = dynamic;
-    always.setAttribute(prefix + "-always", uniqueContext);
-    dynamic.setAttribute(prefix + "-dynamic", uniqueContext);
+    always.setAttribute(prefix + "-always", contextId);
+    dynamic.setAttribute(prefix + "-dynamic", contextId);
     getHead().appendChild(always);
     getHead().appendChild(dynamic);
     setAlwaysStyle(styles.always);
@@ -5251,7 +5156,7 @@ function useStyleMarshal(uniqueId) {
       remove(alwaysRef);
       remove(dynamicRef);
     };
-  }, [setAlwaysStyle, setDynamicStyle, styles.always, styles.resting, uniqueContext]);
+  }, [setAlwaysStyle, setDynamicStyle, styles.always, styles.resting, contextId]);
   var dragging = useCallback(function () {
     return setDynamicStyle(styles.dragging);
   }, [setDynamicStyle, styles.dragging]);
@@ -5274,10 +5179,9 @@ function useStyleMarshal(uniqueId) {
     return {
       dragging: dragging,
       dropping: dropping,
-      resting: resting,
-      styleContext: uniqueContext
+      resting: resting
     };
-  }, [dragging, dropping, resting, uniqueContext]);
+  }, [dragging, dropping, resting]);
   return marshal;
 }
 
@@ -5292,6 +5196,262 @@ function isHtmlElement(el) {
 var throwIfRefIsInvalid = (function (ref) {
   !(ref && isHtmlElement(ref)) ? process.env.NODE_ENV !== "production" ? invariant(false, "\n    provided.innerRef has not been provided with a HTMLElement.\n\n    You can find a guide on using the innerRef callback functions at:\n    https://github.com/atlassian/react-beautiful-dnd/blob/master/docs/guides/using-inner-ref.md\n  ") : invariant(false) : void 0;
 });
+
+function getDragHandle(contextId, draggableId) {
+  var selector = "[" + dragHandle.contextId + "=\"" + contextId + "\"]";
+  var possible = toArray(document.querySelectorAll(selector));
+
+  if (!possible.length) {
+    process.env.NODE_ENV !== "production" ? warning("Unable to find any drag handles in the context \"" + contextId + "\"") : void 0;
+    return null;
+  }
+
+  var handle = find(possible, function (el) {
+    return el.getAttribute(dragHandle.draggableId) === draggableId;
+  });
+
+  if (!handle) {
+    process.env.NODE_ENV !== "production" ? warning("Unable to find drag handle with id \"" + draggableId + "\" as no handle with a matching id was found") : void 0;
+    return null;
+  }
+
+  if (!isHtmlElement(handle)) {
+    process.env.NODE_ENV !== "production" ? warning('drag handle needs to be a HTMLElement') : void 0;
+    return null;
+  }
+
+  return handle;
+}
+
+function useFocusMarshal(contextId) {
+  var entriesRef = useRef({});
+  var recordRef = useRef(null);
+  var restoreFocusFrameRef = useRef(null);
+  var register = useCallback(function register(id, focus) {
+    var entry = {
+      id: id,
+      focus: focus
+    };
+    entriesRef.current[id] = entry;
+    return function unregister() {
+      var entries = entriesRef.current;
+      var current = entries[id];
+
+      if (current !== entry) {
+        delete entries[id];
+      }
+    };
+  }, []);
+  var tryGiveFocus = useCallback(function tryGiveFocus(tryGiveFocusTo) {
+    var handle = getDragHandle(contextId, tryGiveFocusTo);
+
+    if (handle && handle !== document.activeElement) {
+      handle.focus();
+    }
+  }, [contextId]);
+  var tryShiftRecord = useCallback(function tryShiftRecord(previous, redirectTo) {
+    if (recordRef.current === previous) {
+      recordRef.current = redirectTo;
+    }
+  }, []);
+  var tryRestoreFocusRecorded = useCallback(function tryRestoreFocusRecorded() {
+    restoreFocusFrameRef.current = requestAnimationFrame(function () {
+      restoreFocusFrameRef.current = null;
+      var record = recordRef.current;
+
+      if (record) {
+        tryGiveFocus(record);
+      }
+    });
+  }, [tryGiveFocus]);
+
+  function tryRecordFocus(id) {
+    recordRef.current = null;
+    var focused = document.activeElement;
+
+    if (!focused) {
+      return;
+    }
+
+    if (focused.getAttribute(dragHandle.draggableId) !== id) {
+      return;
+    }
+
+    recordRef.current = id;
+  }
+
+  useIsomorphicLayoutEffect(function () {
+    return function clearFrameOnUnmount() {
+      var frameId = restoreFocusFrameRef.current;
+
+      if (frameId) {
+        cancelAnimationFrame(frameId);
+      }
+    };
+  }, []);
+  var marshal = useMemo(function () {
+    return {
+      register: register,
+      tryRecordFocus: tryRecordFocus,
+      tryRestoreFocusRecorded: tryRestoreFocusRecorded,
+      tryShiftRecord: tryShiftRecord
+    };
+  }, [register, tryRestoreFocusRecorded, tryShiftRecord]);
+  return marshal;
+}
+
+function createRegistry() {
+  var entries = {
+    draggables: {},
+    droppables: {}
+  };
+  var subscribers = [];
+
+  function subscribe(cb) {
+    subscribers.push(cb);
+    return function unsubscribe() {
+      var index = subscribers.indexOf(cb);
+
+      if (index === -1) {
+        return;
+      }
+
+      subscribers.splice(index, 1);
+    };
+  }
+
+  function notify(event) {
+    if (subscribers.length) {
+      subscribers.forEach(function (cb) {
+        return cb(event);
+      });
+    }
+  }
+
+  function findDraggableById(id) {
+    return entries.draggables[id] || null;
+  }
+
+  function getDraggableById(id) {
+    var entry = findDraggableById(id);
+    !entry ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot find draggable entry with id [" + id + "]") : invariant(false) : void 0;
+    return entry;
+  }
+
+  var draggableAPI = {
+    register: function register(entry) {
+      entries.draggables[entry.descriptor.id] = entry;
+      notify({
+        type: 'ADDITION',
+        value: entry
+      });
+    },
+    update: function update(entry, last) {
+      var current = entries.draggables[last.descriptor.id];
+
+      if (!current) {
+        return;
+      }
+
+      if (current.uniqueId !== entry.uniqueId) {
+        return;
+      }
+
+      delete entries.draggables[last.descriptor.id];
+      entries.draggables[entry.descriptor.id] = entry;
+    },
+    unregister: function unregister(entry) {
+      var draggableId = entry.descriptor.id;
+      var current = findDraggableById(draggableId);
+
+      if (!current) {
+        return;
+      }
+
+      if (entry.uniqueId !== current.uniqueId) {
+        return;
+      }
+
+      delete entries.draggables[draggableId];
+      notify({
+        type: 'REMOVAL',
+        value: entry.descriptor
+      });
+    },
+    getById: getDraggableById,
+    findById: findDraggableById,
+    exists: function exists(id) {
+      return Boolean(findDraggableById(id));
+    },
+    getAllByType: function getAllByType(type) {
+      return values(entries.draggables).filter(function (entry) {
+        return entry.descriptor.type === type;
+      });
+    }
+  };
+
+  function findDroppableById(id) {
+    return entries.droppables[id] || null;
+  }
+
+  function getDroppableById(id) {
+    var entry = findDroppableById(id);
+    !entry ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot find droppable entry with id [" + id + "]") : invariant(false) : void 0;
+    return entry;
+  }
+
+  var droppableAPI = {
+    register: function register(entry) {
+      entries.droppables[entry.descriptor.id] = entry;
+    },
+    unregister: function unregister(entry) {
+      var current = findDroppableById(entry.descriptor.id);
+
+      if (!current) {
+        return;
+      }
+
+      if (entry.uniqueId !== current.uniqueId) {
+        return;
+      }
+
+      delete entries.droppables[entry.descriptor.id];
+    },
+    getById: getDroppableById,
+    findById: findDroppableById,
+    exists: function exists(id) {
+      return Boolean(findDroppableById(id));
+    },
+    getAllByType: function getAllByType(type) {
+      return values(entries.droppables).filter(function (entry) {
+        return entry.descriptor.type === type;
+      });
+    }
+  };
+
+  function clean() {
+    entries.draggables = {};
+    entries.droppables = {};
+    subscribers.length = 0;
+  }
+
+  return {
+    draggable: draggableAPI,
+    droppable: droppableAPI,
+    subscribe: subscribe,
+    clean: clean
+  };
+}
+
+function useRegistry() {
+  var registry = useMemo(createRegistry, []);
+  useEffect(function () {
+    return function unmount() {
+      requestAnimationFrame(registry.clean);
+    };
+  }, [registry]);
+  return registry;
+}
 
 var StoreContext = React.createContext(null);
 
@@ -5312,13 +5472,14 @@ var visuallyHidden = {
   clip: 'rect(0 0 0 0)',
   'clip-path': 'inset(100%)'
 };
-var getId = function getId(uniqueId) {
-  return "react-beautiful-dnd-announcement-" + uniqueId;
+
+var getId = function getId(contextId) {
+  return "rbd-announcement-" + contextId;
 };
-function useAnnouncer(uniqueId) {
+function useAnnouncer(contextId) {
   var id = useMemo(function () {
-    return getId(uniqueId);
-  }, [uniqueId]);
+    return getId(contextId);
+  }, [contextId]);
   var ref = useRef(null);
   useEffect(function () {
     !!ref.current ? process.env.NODE_ENV !== "production" ? invariant(false, 'Announcement node already mounted') : invariant(false) : void 0;
@@ -5333,10 +5494,12 @@ function useAnnouncer(uniqueId) {
 
     getBodyElement().appendChild(el);
     return function () {
-      var toBeRemoved = ref.current;
-      !toBeRemoved ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot unmount announcement node') : invariant(false) : void 0;
-      getBodyElement().removeChild(toBeRemoved);
-      ref.current = null;
+      setTimeout(function remove() {
+        var toBeRemoved = ref.current;
+        !toBeRemoved ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot unmount announcement node') : invariant(false) : void 0;
+        getBodyElement().removeChild(toBeRemoved);
+        ref.current = null;
+      });
     };
   }, [id]);
   var announce = useCallback(function (message) {
@@ -5350,6 +5513,34 @@ function useAnnouncer(uniqueId) {
     process.env.NODE_ENV !== "production" ? warning("\n      A screen reader message was trying to be announced but it was unable to do so.\n      This can occur if you unmount your <DragDropContext /> in your onDragEnd.\n      Consider calling provided.announce() before the unmount so that the instruction will\n      not be lost for users relying on a screen reader.\n\n      Message not passed to screen reader:\n\n      \"" + message + "\"\n    ") : void 0;
   }, []);
   return announce;
+}
+
+var getId$1 = function getId(contextId) {
+  return "rbd-lift-instruction-" + contextId;
+};
+function useLiftInstruction(contextId, liftInstruction) {
+  var id = useMemo(function () {
+    return getId$1(contextId);
+  }, [contextId]);
+  var ref = useRef(null);
+  useEffect(function mount() {
+    !!ref.current ? process.env.NODE_ENV !== "production" ? invariant(false, 'Description node already mounted') : invariant(false) : void 0;
+    var el = document.createElement('div');
+    ref.current = el;
+    el.id = id;
+    el.textContent = liftInstruction;
+
+    _Object$assign(el.style, visuallyHidden);
+
+    getBodyElement().appendChild(el);
+    return function unmount() {
+      var toBeRemoved = ref.current;
+      !toBeRemoved ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot unmount description node') : invariant(false) : void 0;
+      getBodyElement().removeChild(toBeRemoved);
+      ref.current = null;
+    };
+  }, [id, liftInstruction]);
+  return id;
 }
 
 var AppContext = React.createContext(null);
@@ -5442,6 +5633,1239 @@ function usePrevious(current) {
   return ref;
 }
 
+function create() {
+  var lock = null;
+
+  function isClaimed() {
+    return Boolean(lock);
+  }
+
+  function isActive(value) {
+    return value === lock;
+  }
+
+  function claim(abandon) {
+    !!lock ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot claim lock as it is already claimed') : invariant(false) : void 0;
+    var newLock = {
+      abandon: abandon
+    };
+    lock = newLock;
+    return newLock;
+  }
+
+  function release() {
+    !lock ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot release lock when there is no lock') : invariant(false) : void 0;
+    lock = null;
+  }
+
+  function tryAbandon() {
+    if (lock) {
+      lock.abandon();
+      release();
+    }
+  }
+
+  return {
+    isClaimed: isClaimed,
+    isActive: isActive,
+    claim: claim,
+    release: release,
+    tryAbandon: tryAbandon
+  };
+}
+
+var tab = 9;
+var enter = 13;
+var escape = 27;
+var space = 32;
+var pageUp = 33;
+var pageDown = 34;
+var end = 35;
+var home = 36;
+var arrowLeft = 37;
+var arrowUp = 38;
+var arrowRight = 39;
+var arrowDown = 40;
+
+var _preventedKeys;
+var preventedKeys = (_preventedKeys = {}, _preventedKeys[enter] = true, _preventedKeys[tab] = true, _preventedKeys);
+var preventStandardKeyEvents = (function (event) {
+  if (preventedKeys[event.keyCode]) {
+    event.preventDefault();
+  }
+});
+
+var supportedEventName = function () {
+  var base = 'visibilitychange';
+
+  if (typeof document === 'undefined') {
+    return base;
+  }
+
+  var candidates = [base, "ms" + base, "webkit" + base, "moz" + base, "o" + base];
+  var supported = find(candidates, function (eventName) {
+    return "on" + eventName in document;
+  });
+  return supported || base;
+}();
+
+function noop$1() {}
+
+var primaryButton = 0;
+var sloppyClickThreshold = 5;
+
+function isSloppyClickThresholdExceeded(original, current) {
+  return Math.abs(current.x - original.x) >= sloppyClickThreshold || Math.abs(current.y - original.y) >= sloppyClickThreshold;
+}
+
+var idle$1 = {
+  type: 'IDLE'
+};
+
+function getCaptureBindings(_ref) {
+  var cancel = _ref.cancel,
+      completed = _ref.completed,
+      getPhase = _ref.getPhase,
+      setPhase = _ref.setPhase;
+  return [{
+    eventName: 'mousemove',
+    fn: function fn(event) {
+      var button = event.button,
+          clientX = event.clientX,
+          clientY = event.clientY;
+
+      if (button !== primaryButton) {
+        return;
+      }
+
+      var point = {
+        x: clientX,
+        y: clientY
+      };
+      var phase = getPhase();
+
+      if (phase.type === 'DRAGGING') {
+        event.preventDefault();
+        phase.actions.move(point);
+        return;
+      }
+
+      !(phase.type === 'PENDING') ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot be IDLE') : invariant(false) : void 0;
+      var pending = phase.point;
+
+      if (!isSloppyClickThresholdExceeded(pending, point)) {
+        return;
+      }
+
+      event.preventDefault();
+      var actions = phase.actions.fluidLift(pending);
+      setPhase({
+        type: 'DRAGGING',
+        actions: actions
+      });
+    }
+  }, {
+    eventName: 'mouseup',
+    fn: function fn(event) {
+      var phase = getPhase();
+
+      if (phase.type !== 'DRAGGING') {
+        cancel();
+        return;
+      }
+
+      event.preventDefault();
+      phase.actions.drop({
+        shouldBlockNextClick: true
+      });
+      completed();
+    }
+  }, {
+    eventName: 'mousedown',
+    fn: function fn(event) {
+      if (getPhase().type === 'DRAGGING') {
+        event.preventDefault();
+      }
+
+      cancel();
+    }
+  }, {
+    eventName: 'keydown',
+    fn: function fn(event) {
+      var phase = getPhase();
+
+      if (phase.type === 'PENDING') {
+        cancel();
+        return;
+      }
+
+      if (event.keyCode === escape) {
+        event.preventDefault();
+        cancel();
+        return;
+      }
+
+      preventStandardKeyEvents(event);
+    }
+  }, {
+    eventName: 'resize',
+    fn: cancel
+  }, {
+    eventName: 'scroll',
+    options: {
+      passive: true,
+      capture: false
+    },
+    fn: function fn() {
+      if (getPhase().type === 'PENDING') {
+        cancel();
+      }
+    }
+  }, {
+    eventName: 'webkitmouseforcedown',
+    fn: function fn(event) {
+      var phase = getPhase();
+      !(phase.type !== 'IDLE') ? process.env.NODE_ENV !== "production" ? invariant(false, 'Unexpected phase') : invariant(false) : void 0;
+
+      if (phase.actions.shouldRespectForcePress()) {
+        cancel();
+        return;
+      }
+
+      event.preventDefault();
+    }
+  }, {
+    eventName: supportedEventName,
+    fn: cancel
+  }];
+}
+
+function useMouseSensor(api) {
+  var phaseRef = useRef(idle$1);
+  var unbindEventsRef = useRef(noop$1);
+  var startCaptureBinding = useMemo(function () {
+    return {
+      eventName: 'mousedown',
+      fn: function onMouseDown(event) {
+        if (event.defaultPrevented) {
+          return;
+        }
+
+        if (event.button !== primaryButton) {
+          return;
+        }
+
+        if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
+          return;
+        }
+
+        var draggableId = api.findClosestDraggableId(event);
+
+        if (!draggableId) {
+          return;
+        }
+
+        var actions = api.tryGetLock(draggableId, stop, {
+          sourceEvent: event
+        });
+
+        if (!actions) {
+          return;
+        }
+
+        event.preventDefault();
+        var point = {
+          x: event.clientX,
+          y: event.clientY
+        };
+        unbindEventsRef.current();
+        startPendingDrag(actions, point);
+      }
+    };
+  }, [api]);
+  var preventForcePressBinding = useMemo(function () {
+    return {
+      eventName: 'webkitmouseforcewillbegin',
+      fn: function fn(event) {
+        if (event.defaultPrevented) {
+          return;
+        }
+
+        var id = api.findClosestDraggableId(event);
+
+        if (!id) {
+          return;
+        }
+
+        var options = api.findOptionsForDraggable(id);
+
+        if (!options) {
+          return;
+        }
+
+        if (options.shouldRespectForcePress) {
+          return;
+        }
+
+        if (!api.canGetLock(id)) {
+          return;
+        }
+
+        event.preventDefault();
+      }
+    };
+  }, [api]);
+  var listenForCapture = useCallback(function listenForCapture() {
+    var options = {
+      passive: false,
+      capture: true
+    };
+    unbindEventsRef.current = bindEvents(window, [preventForcePressBinding, startCaptureBinding], options);
+  }, [preventForcePressBinding, startCaptureBinding]);
+  var stop = useCallback(function () {
+    var current = phaseRef.current;
+
+    if (current.type === 'IDLE') {
+      return;
+    }
+
+    phaseRef.current = idle$1;
+    unbindEventsRef.current();
+    listenForCapture();
+  }, [listenForCapture]);
+  var cancel = useCallback(function () {
+    var phase = phaseRef.current;
+    stop();
+
+    if (phase.type === 'DRAGGING') {
+      phase.actions.cancel({
+        shouldBlockNextClick: true
+      });
+    }
+
+    if (phase.type === 'PENDING') {
+      phase.actions.abort();
+    }
+  }, [stop]);
+  var bindCapturingEvents = useCallback(function bindCapturingEvents() {
+    var options = {
+      capture: true,
+      passive: false
+    };
+    var bindings = getCaptureBindings({
+      cancel: cancel,
+      completed: stop,
+      getPhase: function getPhase() {
+        return phaseRef.current;
+      },
+      setPhase: function setPhase(phase) {
+        phaseRef.current = phase;
+      }
+    });
+    unbindEventsRef.current = bindEvents(window, bindings, options);
+  }, [cancel, stop]);
+  var startPendingDrag = useCallback(function startPendingDrag(actions, point) {
+    !(phaseRef.current.type === 'IDLE') ? process.env.NODE_ENV !== "production" ? invariant(false, 'Expected to move from IDLE to PENDING drag') : invariant(false) : void 0;
+    phaseRef.current = {
+      type: 'PENDING',
+      point: point,
+      actions: actions
+    };
+    bindCapturingEvents();
+  }, [bindCapturingEvents]);
+  useIsomorphicLayoutEffect(function mount() {
+    listenForCapture();
+    return function unmount() {
+      unbindEventsRef.current();
+    };
+  }, [listenForCapture]);
+}
+
+var _scrollJumpKeys;
+
+function noop$2() {}
+
+var scrollJumpKeys = (_scrollJumpKeys = {}, _scrollJumpKeys[pageDown] = true, _scrollJumpKeys[pageUp] = true, _scrollJumpKeys[home] = true, _scrollJumpKeys[end] = true, _scrollJumpKeys);
+
+function getDraggingBindings(actions, stop) {
+  function cancel() {
+    stop();
+    actions.cancel();
+  }
+
+  function drop() {
+    stop();
+    actions.drop();
+  }
+
+  return [{
+    eventName: 'keydown',
+    fn: function fn(event) {
+      if (event.keyCode === escape) {
+        event.preventDefault();
+        cancel();
+        return;
+      }
+
+      if (event.keyCode === space) {
+        event.preventDefault();
+        drop();
+        return;
+      }
+
+      if (event.keyCode === arrowDown) {
+        event.preventDefault();
+        actions.moveDown();
+        return;
+      }
+
+      if (event.keyCode === arrowUp) {
+        event.preventDefault();
+        actions.moveUp();
+        return;
+      }
+
+      if (event.keyCode === arrowRight) {
+        event.preventDefault();
+        actions.moveRight();
+        return;
+      }
+
+      if (event.keyCode === arrowLeft) {
+        event.preventDefault();
+        actions.moveLeft();
+        return;
+      }
+
+      if (scrollJumpKeys[event.keyCode]) {
+        event.preventDefault();
+        return;
+      }
+
+      preventStandardKeyEvents(event);
+    }
+  }, {
+    eventName: 'mousedown',
+    fn: cancel
+  }, {
+    eventName: 'mouseup',
+    fn: cancel
+  }, {
+    eventName: 'click',
+    fn: cancel
+  }, {
+    eventName: 'touchstart',
+    fn: cancel
+  }, {
+    eventName: 'resize',
+    fn: cancel
+  }, {
+    eventName: 'wheel',
+    fn: cancel,
+    options: {
+      passive: true
+    }
+  }, {
+    eventName: supportedEventName,
+    fn: cancel
+  }];
+}
+
+function useKeyboardSensor(api) {
+  var unbindEventsRef = useRef(noop$2);
+  var startCaptureBinding = useMemo(function () {
+    return {
+      eventName: 'keydown',
+      fn: function onKeyDown(event) {
+        if (event.defaultPrevented) {
+          return;
+        }
+
+        if (event.keyCode !== space) {
+          return;
+        }
+
+        var draggableId = api.findClosestDraggableId(event);
+
+        if (!draggableId) {
+          return;
+        }
+
+        var preDrag = api.tryGetLock(draggableId, stop, {
+          sourceEvent: event
+        });
+
+        if (!preDrag) {
+          return;
+        }
+
+        event.preventDefault();
+        var isCapturing = true;
+        var actions = preDrag.snapLift();
+        unbindEventsRef.current();
+
+        function stop() {
+          !isCapturing ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot stop capturing a keyboard drag when not capturing') : invariant(false) : void 0;
+          isCapturing = false;
+          unbindEventsRef.current();
+          listenForCapture();
+        }
+
+        unbindEventsRef.current = bindEvents(window, getDraggingBindings(actions, stop), {
+          capture: true,
+          passive: false
+        });
+      }
+    };
+  }, [api]);
+  var listenForCapture = useCallback(function tryStartCapture() {
+    var options = {
+      passive: false,
+      capture: true
+    };
+    unbindEventsRef.current = bindEvents(window, [startCaptureBinding], options);
+  }, [startCaptureBinding]);
+  useIsomorphicLayoutEffect(function mount() {
+    listenForCapture();
+    return function unmount() {
+      unbindEventsRef.current();
+    };
+  }, [listenForCapture]);
+}
+
+var idle$2 = {
+  type: 'IDLE'
+};
+var timeForLongPress = 120;
+var forcePressThreshold = 0.15;
+
+function getWindowBindings(_ref) {
+  var cancel = _ref.cancel,
+      getPhase = _ref.getPhase;
+  return [{
+    eventName: 'orientationchange',
+    fn: cancel
+  }, {
+    eventName: 'resize',
+    fn: cancel
+  }, {
+    eventName: 'contextmenu',
+    fn: function fn(event) {
+      event.preventDefault();
+    }
+  }, {
+    eventName: 'keydown',
+    fn: function fn(event) {
+      if (getPhase().type !== 'DRAGGING') {
+        cancel();
+        return;
+      }
+
+      if (event.keyCode === escape) {
+        event.preventDefault();
+      }
+
+      cancel();
+    }
+  }, {
+    eventName: supportedEventName,
+    fn: cancel
+  }];
+}
+
+function getTargetBindings(_ref2) {
+  var cancel = _ref2.cancel,
+      completed = _ref2.completed,
+      getPhase = _ref2.getPhase;
+  return [{
+    eventName: 'touchmove',
+    options: {
+      capture: false
+    },
+    fn: function fn(event) {
+      var phase = getPhase();
+
+      if (phase.type !== 'DRAGGING') {
+        cancel();
+        return;
+      }
+
+      phase.hasMoved = true;
+      var _event$touches$ = event.touches[0],
+          clientX = _event$touches$.clientX,
+          clientY = _event$touches$.clientY;
+      var point = {
+        x: clientX,
+        y: clientY
+      };
+      event.preventDefault();
+      phase.actions.move(point);
+    }
+  }, {
+    eventName: 'touchend',
+    fn: function fn(event) {
+      var phase = getPhase();
+
+      if (phase.type !== 'DRAGGING') {
+        cancel();
+        return;
+      }
+
+      event.preventDefault();
+      phase.actions.drop({
+        shouldBlockNextClick: true
+      });
+      completed();
+    }
+  }, {
+    eventName: 'touchcancel',
+    fn: function fn(event) {
+      if (getPhase().type !== 'DRAGGING') {
+        cancel();
+        return;
+      }
+
+      event.preventDefault();
+      cancel();
+    }
+  }, {
+    eventName: 'touchforcechange',
+    fn: function fn(event) {
+      var phase = getPhase();
+      !(phase.type !== 'IDLE') ? process.env.NODE_ENV !== "production" ? invariant(false) : invariant(false) : void 0;
+      var touch = event.touches[0];
+      var isForcePress = touch.force >= forcePressThreshold;
+
+      if (!isForcePress) {
+        return;
+      }
+
+      var shouldRespect = phase.actions.shouldRespectForcePress();
+
+      if (phase.type === 'PENDING') {
+        if (shouldRespect) {
+          cancel();
+        }
+
+        return;
+      }
+
+      if (shouldRespect) {
+        if (phase.hasMoved) {
+          event.preventDefault();
+          return;
+        }
+
+        cancel();
+        return;
+      }
+
+      event.preventDefault();
+    }
+  }, {
+    eventName: supportedEventName,
+    fn: cancel
+  }];
+}
+
+function useMouseSensor$1(api) {
+  var phaseRef = useRef(idle$2);
+  var unbindEventsRef = useRef(noop$1);
+  var getPhase = useCallback(function getPhase() {
+    return phaseRef.current;
+  }, []);
+  var setPhase = useCallback(function setPhase(phase) {
+    phaseRef.current = phase;
+  }, []);
+  var startCaptureBinding = useMemo(function () {
+    return {
+      eventName: 'touchstart',
+      fn: function onTouchStart(event) {
+        if (event.defaultPrevented) {
+          return;
+        }
+
+        var draggableId = api.findClosestDraggableId(event);
+
+        if (!draggableId) {
+          return;
+        }
+
+        var actions = api.tryGetLock(draggableId, stop, {
+          sourceEvent: event
+        });
+
+        if (!actions) {
+          return;
+        }
+
+        var touch = event.touches[0];
+        var clientX = touch.clientX,
+            clientY = touch.clientY;
+        var point = {
+          x: clientX,
+          y: clientY
+        };
+        var target = event.target;
+        !isHtmlElement(target) ? process.env.NODE_ENV !== "production" ? invariant(false, 'Expected touch target to be an element') : invariant(false) : void 0;
+        unbindEventsRef.current();
+        startPendingDrag(actions, point, target);
+      }
+    };
+  }, [api]);
+  var listenForCapture = useCallback(function listenForCapture() {
+    var options = {
+      capture: true,
+      passive: false
+    };
+    unbindEventsRef.current = bindEvents(window, [startCaptureBinding], options);
+  }, [startCaptureBinding]);
+  var stop = useCallback(function () {
+    var current = phaseRef.current;
+
+    if (current.type === 'IDLE') {
+      return;
+    }
+
+    if (current.type === 'PENDING') {
+      clearTimeout(current.longPressTimerId);
+    }
+
+    setPhase(idle$2);
+    unbindEventsRef.current();
+    listenForCapture();
+  }, [listenForCapture, setPhase]);
+  var cancel = useCallback(function () {
+    var phase = phaseRef.current;
+    stop();
+
+    if (phase.type === 'DRAGGING') {
+      phase.actions.cancel({
+        shouldBlockNextClick: true
+      });
+    }
+
+    if (phase.type === 'PENDING') {
+      phase.actions.abort();
+    }
+  }, [stop]);
+  var bindCapturingEvents = useCallback(function bindCapturingEvents(target) {
+    var options = {
+      capture: true,
+      passive: false
+    };
+    var args = {
+      cancel: cancel,
+      completed: stop,
+      getPhase: getPhase
+    };
+    var unbindTarget = bindEvents(target, getTargetBindings(args), options);
+    var unbindWindow = bindEvents(window, getWindowBindings(args), options);
+
+    unbindEventsRef.current = function unbindAll() {
+      unbindTarget();
+      unbindWindow();
+    };
+  }, [cancel, getPhase, stop]);
+  var startDragging = useCallback(function startDragging() {
+    var phase = getPhase();
+    !(phase.type === 'PENDING') ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot start dragging from phase " + phase.type) : invariant(false) : void 0;
+    var actions = phase.actions.fluidLift(phase.point);
+    setPhase({
+      type: 'DRAGGING',
+      actions: actions,
+      hasMoved: false
+    });
+  }, [getPhase, setPhase]);
+  var startPendingDrag = useCallback(function startPendingDrag(actions, point, target) {
+    !(getPhase().type === 'IDLE') ? process.env.NODE_ENV !== "production" ? invariant(false, 'Expected to move from IDLE to PENDING drag') : invariant(false) : void 0;
+    var longPressTimerId = setTimeout(startDragging, timeForLongPress);
+    setPhase({
+      type: 'PENDING',
+      point: point,
+      actions: actions,
+      longPressTimerId: longPressTimerId
+    });
+    bindCapturingEvents(target);
+  }, [bindCapturingEvents, getPhase, setPhase, startDragging]);
+  useIsomorphicLayoutEffect(function mount() {
+    listenForCapture();
+    return function unmount() {
+      unbindEventsRef.current();
+      var phase = getPhase();
+
+      if (phase.type === 'PENDING') {
+        clearTimeout(phase.longPressTimerId);
+        setPhase(idle$2);
+      }
+    };
+  }, [getPhase, listenForCapture, setPhase]);
+  useIsomorphicLayoutEffect(function webkitHack() {
+    var unbind = bindEvents(window, [{
+      eventName: 'touchmove',
+      fn: function fn() {},
+      options: {
+        capture: false,
+        passive: false
+      }
+    }]);
+    return unbind;
+  }, []);
+}
+
+function useValidateSensorHooks(sensorHooks) {
+  var previousRef = usePrevious(sensorHooks);
+  useEffect(function () {
+    if (process.env.NODE_ENV !== 'production') {
+      !(previousRef.current.length === sensorHooks.length) ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot change the amount of sensor hooks after mounting') : invariant(false) : void 0;
+    }
+  });
+}
+
+var interactiveTagNames = {
+  input: true,
+  button: true,
+  textarea: true,
+  select: true,
+  option: true,
+  optgroup: true,
+  video: true,
+  audio: true
+};
+
+function isAnInteractiveElement(parent, current) {
+  if (current == null) {
+    return false;
+  }
+
+  var hasAnInteractiveTag = Boolean(interactiveTagNames[current.tagName.toLowerCase()]);
+
+  if (hasAnInteractiveTag) {
+    return true;
+  }
+
+  var attribute = current.getAttribute('contenteditable');
+
+  if (attribute === 'true' || attribute === '') {
+    return true;
+  }
+
+  if (current === parent) {
+    return false;
+  }
+
+  return isAnInteractiveElement(parent, current.parentElement);
+}
+
+function isEventInInteractiveElement(draggable, event) {
+  var target = event.target;
+
+  if (!isHtmlElement(target)) {
+    return false;
+  }
+
+  return isAnInteractiveElement(draggable, target);
+}
+
+var getBorderBoxCenterPosition = (function (el) {
+  return getRect(el.getBoundingClientRect()).center;
+});
+
+var supportedMatchesName = function () {
+  var base = 'matches';
+
+  if (typeof document === 'undefined') {
+    return base;
+  }
+
+  var candidates = [base, 'msMatchesSelector', 'webkitMatchesSelector'];
+  var value = find(candidates, function (name) {
+    return name in Element.prototype;
+  });
+  return value || base;
+}();
+
+function closestPonyfill(el, selector) {
+  if (el == null) {
+    return null;
+  }
+
+  if (el[supportedMatchesName](selector)) {
+    return el;
+  }
+
+  return closestPonyfill(el.parentElement, selector);
+}
+
+function closest$1(el, selector) {
+  return closestPonyfill(el, selector);
+}
+
+function getSelector(contextId) {
+  return "[" + dragHandle.contextId + "=\"" + contextId + "\"]";
+}
+
+function tryGetClosestDraggableIdFromEvent(contextId, event) {
+  var target = event.target;
+
+  if (!isHtmlElement(target)) {
+    process.env.NODE_ENV !== "production" ? warning('event.target must be a HTMLElement') : void 0;
+    return null;
+  }
+
+  var selector = getSelector(contextId);
+  var handle = closest$1(target, selector);
+
+  if (!handle) {
+    return null;
+  }
+
+  return handle.getAttribute(dragHandle.draggableId);
+}
+
+function tryGetDraggable(contextId, draggableId) {
+  var selector = "[" + draggable.contextId + "=\"" + contextId + "\"]";
+  var possible = toArray(document.querySelectorAll(selector));
+  var draggable$1 = find(possible, function (el) {
+    return el.getAttribute(draggable.id) === draggableId;
+  });
+
+  if (!draggable$1) {
+    return null;
+  }
+
+  if (!isHtmlElement(draggable$1)) {
+    process.env.NODE_ENV !== "production" ? warning('Draggable element is not a HTMLElement') : void 0;
+    return null;
+  }
+
+  return draggable$1;
+}
+
+function preventDefault(event) {
+  event.preventDefault();
+}
+
+function _isActive(_ref) {
+  var expected = _ref.expected,
+      phase = _ref.phase,
+      isLockActive = _ref.isLockActive,
+      shouldWarn = _ref.shouldWarn;
+
+  if (!isLockActive()) {
+    if (shouldWarn) {
+      process.env.NODE_ENV !== "production" ? warning("\n        Cannot perform action.\n        The sensor no longer has an action lock.\n\n        Tips:\n\n        - Throw away your action handlers when forceStop() is called\n        - Check actions.isActive() if you really need to\n      ") : void 0;
+    }
+
+    return false;
+  }
+
+  if (expected !== phase) {
+    if (shouldWarn) {
+      process.env.NODE_ENV !== "production" ? warning("\n        Cannot perform action.\n        The actions you used belong to an outdated phase\n\n        Current phase: " + expected + "\n        You called an action from outdated phase: " + phase + "\n\n        Tips:\n\n        - Do not use preDragActions actions after calling preDragActions.lift()\n      ") : void 0;
+    }
+
+    return false;
+  }
+
+  return true;
+}
+
+function canStart(_ref2) {
+  var lockAPI = _ref2.lockAPI,
+      store = _ref2.store,
+      registry = _ref2.registry,
+      draggableId = _ref2.draggableId;
+
+  if (lockAPI.isClaimed()) {
+    return false;
+  }
+
+  var entry = registry.draggable.findById(draggableId);
+
+  if (!entry) {
+    process.env.NODE_ENV !== "production" ? warning("Unable to find draggable with id: " + draggableId) : void 0;
+    return false;
+  }
+
+  if (!entry.options.isEnabled) {
+    return false;
+  }
+
+  if (!canStartDrag(store.getState(), draggableId)) {
+    return false;
+  }
+
+  return true;
+}
+
+function tryStart(_ref3) {
+  var lockAPI = _ref3.lockAPI,
+      contextId = _ref3.contextId,
+      store = _ref3.store,
+      registry = _ref3.registry,
+      draggableId = _ref3.draggableId,
+      forceSensorStop = _ref3.forceSensorStop,
+      sourceEvent = _ref3.sourceEvent;
+  var shouldStart = canStart({
+    lockAPI: lockAPI,
+    store: store,
+    registry: registry,
+    draggableId: draggableId
+  });
+
+  if (!shouldStart) {
+    return null;
+  }
+
+  var entry = registry.draggable.getById(draggableId);
+  var el = tryGetDraggable(contextId, entry.descriptor.id);
+
+  if (!el) {
+    process.env.NODE_ENV !== "production" ? warning("Unable to find draggable element with id: " + draggableId) : void 0;
+    return null;
+  }
+
+  if (sourceEvent && !entry.options.canDragInteractiveElements && isEventInInteractiveElement(el, sourceEvent)) {
+    return null;
+  }
+
+  var lock = lockAPI.claim(forceSensorStop || noop$1);
+  var phase = 'PRE_DRAG';
+
+  function getShouldRespectForcePress() {
+    var item = registry.draggable.getById(draggableId);
+    return item.options.shouldRespectForcePress;
+  }
+
+  function isLockActive() {
+    return lockAPI.isActive(lock);
+  }
+
+  function tryDispatch(expected, getAction) {
+    if (_isActive({
+      expected: expected,
+      phase: phase,
+      isLockActive: isLockActive,
+      shouldWarn: true
+    })) {
+      store.dispatch(getAction());
+    }
+  }
+
+  var tryDispatchWhenDragging = tryDispatch.bind(this, 'DRAGGING');
+
+  function lift$1(args) {
+    function completed() {
+      lockAPI.release();
+      phase = 'COMPLETED';
+    }
+
+    if (phase !== 'PRE_DRAG') {
+      completed();
+      !(phase === 'PRE_DRAG') ? process.env.NODE_ENV !== "production" ? invariant(false, "Cannot lift in phase " + phase) : invariant(false) : void 0;
+    }
+
+    store.dispatch(lift(args.liftActionArgs));
+    phase = 'DRAGGING';
+
+    function finish(reason, options) {
+      if (options === void 0) {
+        options = {
+          shouldBlockNextClick: false
+        };
+      }
+
+      args.cleanup();
+
+      if (options.shouldBlockNextClick) {
+        window.addEventListener('click', preventDefault, {
+          once: true,
+          passive: false,
+          capture: true
+        });
+      }
+
+      completed();
+      store.dispatch(drop({
+        reason: reason
+      }));
+    }
+
+    return _extends({
+      isActive: function isActive() {
+        return _isActive({
+          expected: 'DRAGGING',
+          phase: phase,
+          isLockActive: isLockActive,
+          shouldWarn: false
+        });
+      },
+      shouldRespectForcePress: getShouldRespectForcePress,
+      drop: function drop(options) {
+        return finish('DROP', options);
+      },
+      cancel: function cancel(options) {
+        return finish('CANCEL', options);
+      }
+    }, args.actions);
+  }
+
+  function fluidLift(clientSelection) {
+    var move$1 = rafSchd(function (client) {
+      tryDispatchWhenDragging(function () {
+        return move({
+          client: client
+        });
+      });
+    });
+    var api = lift$1({
+      liftActionArgs: {
+        id: draggableId,
+        clientSelection: clientSelection,
+        movementMode: 'FLUID'
+      },
+      cleanup: function cleanup() {
+        return move$1.cancel();
+      },
+      actions: {
+        move: move$1
+      }
+    });
+    return _extends({}, api, {
+      move: move$1
+    });
+  }
+
+  function snapLift() {
+    var actions = {
+      moveUp: function moveUp$1() {
+        return tryDispatchWhenDragging(moveUp);
+      },
+      moveRight: function moveRight$1() {
+        return tryDispatchWhenDragging(moveRight);
+      },
+      moveDown: function moveDown$1() {
+        return tryDispatchWhenDragging(moveDown);
+      },
+      moveLeft: function moveLeft$1() {
+        return tryDispatchWhenDragging(moveLeft);
+      }
+    };
+    return lift$1({
+      liftActionArgs: {
+        id: draggableId,
+        clientSelection: getBorderBoxCenterPosition(el),
+        movementMode: 'SNAP'
+      },
+      cleanup: noop$1,
+      actions: actions
+    });
+  }
+
+  function abortPreDrag() {
+    var shouldRelease = _isActive({
+      expected: 'PRE_DRAG',
+      phase: phase,
+      isLockActive: isLockActive,
+      shouldWarn: true
+    });
+
+    if (shouldRelease) {
+      lockAPI.release();
+    }
+  }
+
+  var preDrag = {
+    isActive: function isActive() {
+      return _isActive({
+        expected: 'PRE_DRAG',
+        phase: phase,
+        isLockActive: isLockActive,
+        shouldWarn: false
+      });
+    },
+    shouldRespectForcePress: getShouldRespectForcePress,
+    fluidLift: fluidLift,
+    snapLift: snapLift,
+    abort: abortPreDrag
+  };
+  return preDrag;
+}
+
+var defaultSensors = [useMouseSensor, useKeyboardSensor, useMouseSensor$1];
+function useSensorMarshal(_ref4) {
+  var contextId = _ref4.contextId,
+      store = _ref4.store,
+      registry = _ref4.registry,
+      customSensors = _ref4.customSensors,
+      enableDefaultSensors = _ref4.enableDefaultSensors;
+  var useSensors = [].concat(enableDefaultSensors ? defaultSensors : [], customSensors || []);
+  var lockAPI = useState(function () {
+    return create();
+  })[0];
+  var tryAbandonLock = useCallback(function tryAbandonLock(previous, current) {
+    if (previous.isDragging && !current.isDragging) {
+      lockAPI.tryAbandon();
+    }
+  }, [lockAPI]);
+  useIsomorphicLayoutEffect(function listenToStore() {
+    var previous = store.getState();
+    var unsubscribe = store.subscribe(function () {
+      var current = store.getState();
+      tryAbandonLock(previous, current);
+      previous = current;
+    });
+    return unsubscribe;
+  }, [lockAPI, store, tryAbandonLock]);
+  useIsomorphicLayoutEffect(function () {
+    return lockAPI.tryAbandon;
+  }, [lockAPI.tryAbandon]);
+  var canGetLock = useCallback(function (draggableId) {
+    return canStart({
+      lockAPI: lockAPI,
+      registry: registry,
+      store: store,
+      draggableId: draggableId
+    });
+  }, [lockAPI, registry, store]);
+  var tryGetLock = useCallback(function (draggableId, forceStop, options) {
+    return tryStart({
+      lockAPI: lockAPI,
+      registry: registry,
+      contextId: contextId,
+      store: store,
+      draggableId: draggableId,
+      forceSensorStop: forceStop,
+      sourceEvent: options && options.sourceEvent ? options.sourceEvent : null
+    });
+  }, [contextId, lockAPI, registry, store]);
+  var findClosestDraggableId = useCallback(function (event) {
+    return tryGetClosestDraggableIdFromEvent(contextId, event);
+  }, [contextId]);
+  var findOptionsForDraggable = useCallback(function (id) {
+    var entry = registry.draggable.findById(id);
+    return entry ? entry.options : null;
+  }, [registry.draggable]);
+  var tryReleaseLock = useCallback(lockAPI.tryAbandon, [lockAPI]);
+  var isLockClaimed = useCallback(lockAPI.isClaimed, [lockAPI]);
+  var api = useMemo(function () {
+    return {
+      canGetLock: canGetLock,
+      tryGetLock: tryGetLock,
+      findClosestDraggableId: findClosestDraggableId,
+      findOptionsForDraggable: findOptionsForDraggable,
+      tryReleaseLock: tryReleaseLock,
+      isLockClaimed: isLockClaimed
+    };
+  }, [canGetLock, tryGetLock, findClosestDraggableId, findOptionsForDraggable, tryReleaseLock, isLockClaimed]);
+  useValidateSensorHooks(useSensors);
+
+  for (var i = 0; i < useSensors.length; i++) {
+    useSensors[i](api);
+  }
+}
+
 var createResponders = function createResponders(props) {
   return {
     onBeforeDragStart: props.onBeforeDragStart,
@@ -5457,8 +6881,10 @@ function getStore(lazyRef) {
 }
 
 function App(props) {
-  var uniqueId = props.uniqueId,
-      setOnError = props.setOnError;
+  var contextId = props.contextId,
+      setOnError = props.setOnError,
+      sensors = props.sensors,
+      liftInstruction = props.liftInstruction;
   var lazyStoreRef = useRef(null);
   var draggableRef = useRef(null);
   useStartupValidation();
@@ -5466,28 +6892,32 @@ function App(props) {
   var getResponders = useCallback(function () {
     return createResponders(lastPropsRef.current);
   }, [lastPropsRef]);
-  var announce = useAnnouncer(uniqueId);
-  var styleMarshal = useStyleMarshal(uniqueId);
+  var announce = useAnnouncer(contextId);
+  var liftInstructionId = useLiftInstruction(contextId, liftInstruction);
+  var styleMarshal = useStyleMarshal(contextId);
   var lazyDispatch = useCallback(function (action) {
     getStore(lazyStoreRef).dispatch(action);
   }, []);
   var callbacks = useMemo(function () {
     return bindActionCreators({
-      publishWhileDragging: publishWhileDragging$1,
+      publishWhileDragging: publishWhileDragging,
       updateDroppableScroll: updateDroppableScroll,
       updateDroppableIsEnabled: updateDroppableIsEnabled,
       updateDroppableIsCombineEnabled: updateDroppableIsCombineEnabled,
       collectionStarting: collectionStarting
     }, lazyDispatch);
   }, [lazyDispatch]);
-  var getDraggableRef = useCallback(function () {
+  var registry = useRegistry();
+
+  var getDraggableRef = function getDraggableRef() {
     return draggableRef.current;
-  });
+  };
+
   var dimensionMarshal = useMemo(function () {
-    return createDimensionMarshal(callbacks, {
+    return createDimensionMarshal(registry, callbacks, {
       getContainer: getDraggableRef
     });
-  }, [callbacks, getDraggableRef]);
+  }, [registry, callbacks, getDraggableRef]);
   var modifiedScrollWondow = useCallback(function (change) {
     var current = getStore(lazyStoreRef);
 
@@ -5509,15 +6939,17 @@ function App(props) {
       move: move
     }, lazyDispatch)));
   }, [dimensionMarshal.scrollDroppable, lazyDispatch]);
+  var focusMarshal = useFocusMarshal(contextId);
   var store = useMemo(function () {
     return createStore({
-      dimensionMarshal: dimensionMarshal,
-      styleMarshal: styleMarshal,
       announce: announce,
       autoScroller: autoScroller,
-      getResponders: getResponders
+      dimensionMarshal: dimensionMarshal,
+      focusMarshal: focusMarshal,
+      getResponders: getResponders,
+      styleMarshal: styleMarshal
     });
-  }, [announce, autoScroller, dimensionMarshal, getResponders, styleMarshal]);
+  }, [announce, autoScroller, dimensionMarshal, focusMarshal, getResponders, styleMarshal]);
 
   if (process.env.NODE_ENV !== 'production') {
     if (lazyStoreRef.current && lazyStoreRef.current !== store) {
@@ -5546,11 +6978,14 @@ function App(props) {
   var appContext = useMemo(function () {
     return {
       marshal: dimensionMarshal,
-      style: styleMarshal.styleContext,
+      focus: focusMarshal,
+      contextId: contextId,
       canLift: getCanLift,
-      isMovementAllowed: getIsMovementAllowed
+      isMovementAllowed: getIsMovementAllowed,
+      liftInstructionId: liftInstructionId,
+      registry: registry
     };
-  }, [dimensionMarshal, getCanLift, getIsMovementAllowed, styleMarshal.styleContext]);
+  }, [contextId, dimensionMarshal, focusMarshal, getCanLift, getIsMovementAllowed, liftInstructionId, registry]);
   var notifyScrollToWindow = useCallback(function () {
     var current = getStore(lazyStoreRef);
 
@@ -5583,6 +7018,13 @@ function App(props) {
 
     throwIfRefIsInvalid(ref);
   });
+  useSensorMarshal({
+    contextId: contextId,
+    store: store,
+    registry: registry,
+    customSensors: sensors,
+    enableDefaultSensors: props.enableDefaultSensors !== false
+  });
   useEffect(function () {
     return tryResetStore;
   }, [tryResetStore]);
@@ -5599,26 +7041,28 @@ function resetServerContext() {
   instanceCount = 0;
 }
 function DragDropContext(props) {
-  var uniqueId = useMemo(function () {
-    return instanceCount++;
+  var contextId = useMemo(function () {
+    return "" + instanceCount++;
   }, []);
+  var liftInstruction = props.liftInstruction || preset.liftInstruction;
   return React.createElement(ErrorBoundary, null, function (setOnError) {
     return React.createElement(App, _extends({
       setOnError: setOnError,
-      uniqueId: uniqueId
+      contextId: contextId,
+      liftInstruction: liftInstruction
     }, props), props.children);
   });
 }
 
-var isEqual$2 = function isEqual(base) {
+var isEqual$1 = function isEqual(base) {
   return function (value) {
     return base === value;
   };
 };
 
-var isScroll = isEqual$2('scroll');
-var isAuto = isEqual$2('auto');
-var isVisible$1 = isEqual$2('visible');
+var isScroll = isEqual$1('scroll');
+var isAuto = isEqual$1('auto');
+var isVisible$1 = isEqual$1('visible');
 
 var isEither = function isEither(overflow, fn) {
   return fn(overflow.overflowX) || fn(overflow.overflowY);
@@ -5832,21 +7276,30 @@ function useRequiredContext(Context) {
   return result;
 }
 
+var count = 0;
+function useUniqueId(prefix) {
+  var countRef = useRef(count++);
+  return prefix + "::" + countRef.current;
+}
+
 var getClosestScrollableFromDrag = function getClosestScrollableFromDrag(dragging) {
   return dragging && dragging.env.closestScrollable || null;
 };
 
-function useDroppableDimensionPublisher(args) {
+function useDroppablePublisher(args) {
   var whileDraggingRef = useRef(null);
   var appContext = useRequiredContext(AppContext);
-  var marshal = appContext.marshal;
+  var uniqueId = useUniqueId('droppable');
+  var registry = appContext.registry,
+      marshal = appContext.marshal;
   var previousRef = usePrevious(args);
   var descriptor = useMemo(function () {
     return {
       id: args.droppableId,
-      type: args.type
+      type: args.type,
+      mode: args.mode
     };
-  }, [args.droppableId, args.type]);
+  }, [args.droppableId, args.mode, args.type]);
   var publishedDescriptorRef = useRef(descriptor);
   var memoizedUpdateScroll = useMemo(function () {
     return memoizeOne(function (x, y) {
@@ -5910,17 +7363,19 @@ function useDroppableDimensionPublisher(args) {
       isCombineEnabled: previous.isCombineEnabled,
       shouldClipSubject: !previous.ignoreContainerClipping
     });
+    var scrollable = env.closestScrollable;
 
-    if (env.closestScrollable) {
-      env.closestScrollable.addEventListener('scroll', onClosestScroll, getListenerOptions(dragging.scrollOptions));
+    if (scrollable) {
+      scrollable.setAttribute(scrollContainer$1.contextId, appContext.contextId);
+      scrollable.addEventListener('scroll', onClosestScroll, getListenerOptions(dragging.scrollOptions));
 
       if (process.env.NODE_ENV !== 'production') {
-        checkForNestedScrollContainers(env.closestScrollable);
+        checkForNestedScrollContainers(scrollable);
       }
     }
 
     return dimension;
-  }, [descriptor, onClosestScroll, previousRef]);
+  }, [appContext.contextId, descriptor, onClosestScroll, previousRef]);
   var recollect = useCallback(function (options) {
     var dragging = whileDraggingRef.current;
     var closest = getClosestScrollableFromDrag(dragging);
@@ -5957,6 +7412,7 @@ function useDroppableDimensionPublisher(args) {
     }
 
     scheduleScrollUpdate.cancel();
+    closest.removeAttribute(scrollContainer$1.contextId);
     closest.removeEventListener('scroll', onClosestScroll, getListenerOptions(dragging.scrollOptions));
   }, [onClosestScroll, scheduleScrollUpdate]);
   var scroll = useCallback(function (change) {
@@ -5975,18 +7431,25 @@ function useDroppableDimensionPublisher(args) {
       scroll: scroll
     };
   }, [dragStopped, getDimensionAndWatchScroll, recollect, scroll]);
+  var entry = useMemo(function () {
+    return {
+      uniqueId: uniqueId,
+      descriptor: descriptor,
+      callbacks: callbacks
+    };
+  }, [callbacks, descriptor, uniqueId]);
   useIsomorphicLayoutEffect(function () {
-    publishedDescriptorRef.current = descriptor;
-    marshal.registerDroppable(descriptor, callbacks);
+    publishedDescriptorRef.current = entry.descriptor;
+    registry.droppable.register(entry);
     return function () {
       if (whileDraggingRef.current) {
         process.env.NODE_ENV !== "production" ? warning('Unsupported: changing the droppableId or type of a Droppable during a drag') : void 0;
         dragStopped();
       }
 
-      marshal.unregisterDroppable(descriptor);
+      registry.droppable.unregister(entry);
     };
-  }, [callbacks, descriptor, dragStopped, marshal]);
+  }, [callbacks, descriptor, dragStopped, entry, marshal, registry.droppable]);
   useIsomorphicLayoutEffect(function () {
     if (!whileDraggingRef.current) {
       return;
@@ -6003,7 +7466,7 @@ function useDroppableDimensionPublisher(args) {
   }, [args.isCombineEnabled, marshal]);
 }
 
-function noop() {}
+function noop$3() {}
 
 var empty = {
   width: 0,
@@ -6069,7 +7532,7 @@ function Placeholder(props) {
   var animate = props.animate,
       onTransitionEnd = props.onTransitionEnd,
       onClose = props.onClose,
-      styleContext = props.styleContext;
+      contextId = props.contextId;
 
   var _useState = useState(props.animate === 'open'),
       isAnimatingOpenOnMount = _useState[0],
@@ -6077,17 +7540,17 @@ function Placeholder(props) {
 
   useEffect(function () {
     if (!isAnimatingOpenOnMount) {
-      return noop;
+      return noop$3;
     }
 
     if (animate !== 'open') {
       tryClearAnimateOpenTimer();
       setIsAnimatingOpenOnMount(false);
-      return noop;
+      return noop$3;
     }
 
     if (animateOpenTimerRef.current) {
-      return noop;
+      return noop$3;
     }
 
     animateOpenTimerRef.current = setTimeout(function () {
@@ -6114,7 +7577,7 @@ function Placeholder(props) {
   });
   return React.createElement(props.placeholder.tagName, {
     style: style,
-    'data-react-beautiful-dnd-placeholder': styleContext,
+    'data-rbd-placeholder-context-id': contextId,
     onTransitionEnd: onSizeChangeEnd,
     ref: props.innerRef
   });
@@ -6128,34 +7591,63 @@ function checkIsValidInnerRef(el) {
   !(el && isHtmlElement(el)) ? process.env.NODE_ENV !== "production" ? invariant(false, "\n    provided.innerRef has not been provided with a HTMLElement.\n\n    You can find a guide on using the innerRef callback functions at:\n    https://github.com/atlassian/react-beautiful-dnd/blob/master/docs/guides/using-inner-ref.md\n  ") : invariant(false) : void 0;
 }
 
-function checkOwnProps(props) {
-  !props.droppableId ? process.env.NODE_ENV !== "production" ? invariant(false, 'A Droppable requires a droppableId prop') : invariant(false) : void 0;
-  !(typeof props.isDropDisabled === 'boolean') ? process.env.NODE_ENV !== "production" ? invariant(false, 'isDropDisabled must be a boolean') : invariant(false) : void 0;
-  !(typeof props.isCombineEnabled === 'boolean') ? process.env.NODE_ENV !== "production" ? invariant(false, 'isCombineEnabled must be a boolean') : invariant(false) : void 0;
-  !(typeof props.ignoreContainerClipping === 'boolean') ? process.env.NODE_ENV !== "production" ? invariant(false, 'ignoreContainerClipping must be a boolean') : invariant(false) : void 0;
+function isBoolean(value) {
+  return typeof value === 'boolean';
 }
 
-function checkPlaceholderRef(props, placeholderEl) {
+function run(args, checks) {
+  checks.forEach(function (check) {
+    return check(args);
+  });
+}
+
+var shared = [function required(_ref) {
+  var props = _ref.props;
+  !props.droppableId ? process.env.NODE_ENV !== "production" ? invariant(false, 'A Droppable requires a droppableId prop') : invariant(false) : void 0;
+}, function _boolean(_ref2) {
+  var props = _ref2.props;
+  !isBoolean(props.isDropDisabled) ? process.env.NODE_ENV !== "production" ? invariant(false, 'isDropDisabled must be a boolean') : invariant(false) : void 0;
+  !isBoolean(props.isCombineEnabled) ? process.env.NODE_ENV !== "production" ? invariant(false, 'isCombineEnabled must be a boolean') : invariant(false) : void 0;
+  !isBoolean(props.ignoreContainerClipping) ? process.env.NODE_ENV !== "production" ? invariant(false, 'ignoreContainerClipping must be a boolean') : invariant(false) : void 0;
+}, function ref(_ref3) {
+  var getDroppableRef = _ref3.getDroppableRef;
+  checkIsValidInnerRef(getDroppableRef());
+}];
+var standard = [function placeholder(_ref4) {
+  var props = _ref4.props,
+      getPlaceholderRef = _ref4.getPlaceholderRef;
+
   if (!props.placeholder) {
     return;
   }
 
-  if (placeholderEl) {
+  var ref = getPlaceholderRef();
+
+  if (ref) {
     return;
   }
 
-  process.env.NODE_ENV !== "production" ? warning("\n    Droppable setup issue [droppableId: \"" + props.droppableId + "\"]:\n    DroppableProvided > placeholder could not be found.\n\n    Please be sure to add the {provided.placeholder} React Node as a child of your Droppable.\n    More information: https://github.com/atlassian/react-beautiful-dnd/blob/master/docs/api/droppable.md\n  ") : void 0;
-}
-
-function useValidation(_ref) {
-  var props = _ref.props,
-      getDroppableRef = _ref.getDroppableRef,
-      getPlaceholderRef = _ref.getPlaceholderRef;
+  process.env.NODE_ENV !== "production" ? warning("\n      Droppable setup issue [droppableId: \"" + props.droppableId + "\"]:\n      DroppableProvided > placeholder could not be found.\n\n      Please be sure to add the {provided.placeholder} React Node as a child of your Droppable.\n      More information: https://github.com/atlassian/react-beautiful-dnd/blob/master/docs/api/droppable.md\n    ") : void 0;
+}];
+var virtual = [function hasClone(_ref5) {
+  var props = _ref5.props;
+  !props.whenDraggingClone ? process.env.NODE_ENV !== "production" ? invariant(false, 'Must provide a clone render function (whenDraggingClone) for virtual lists') : invariant(false) : void 0;
+}, function hasNoPlaceholder(_ref6) {
+  var getPlaceholderRef = _ref6.getPlaceholderRef;
+  !!getPlaceholderRef() ? process.env.NODE_ENV !== "production" ? invariant(false, 'Expected virtual list to not have a placeholder') : invariant(false) : void 0;
+}];
+function useValidation(args) {
   useEffect(function () {
     if (process.env.NODE_ENV !== 'production') {
-      checkOwnProps(props);
-      checkIsValidInnerRef(getDroppableRef());
-      checkPlaceholderRef(props, getPlaceholderRef());
+      run(args, shared);
+
+      if (args.props.mode === 'STANDARD') {
+        run(args, standard);
+      }
+
+      if (args.props.mode === 'VIRTUAL') {
+        run(args, virtual);
+      }
     }
   });
 }
@@ -6240,249 +7732,6 @@ var AnimateInOut = function (_React$PureComponent) {
   return AnimateInOut;
 }(React.PureComponent);
 
-function Droppable(props) {
-  var appContext = useContext(AppContext);
-  !appContext ? process.env.NODE_ENV !== "production" ? invariant(false, 'Could not find app context') : invariant(false) : void 0;
-  var styleContext = appContext.style,
-      isMovementAllowed = appContext.isMovementAllowed;
-  var droppableRef = useRef(null);
-  var placeholderRef = useRef(null);
-  var children = props.children,
-      droppableId = props.droppableId,
-      type = props.type,
-      direction = props.direction,
-      ignoreContainerClipping = props.ignoreContainerClipping,
-      isDropDisabled = props.isDropDisabled,
-      isCombineEnabled = props.isCombineEnabled,
-      snapshot = props.snapshot,
-      updateViewportMaxScroll = props.updateViewportMaxScroll;
-  var getDroppableRef = useCallback(function () {
-    return droppableRef.current;
-  }, []);
-  var getPlaceholderRef = useCallback(function () {
-    return placeholderRef.current;
-  }, []);
-  var setDroppableRef = useCallback(function (value) {
-    droppableRef.current = value;
-  }, []);
-  var setPlaceholderRef = useCallback(function (value) {
-    placeholderRef.current = value;
-  }, []);
-  var onPlaceholderTransitionEnd = useCallback(function () {
-    if (isMovementAllowed()) {
-      updateViewportMaxScroll({
-        maxScroll: getMaxWindowScroll()
-      });
-    }
-  }, [isMovementAllowed, updateViewportMaxScroll]);
-  useDroppableDimensionPublisher({
-    droppableId: droppableId,
-    type: type,
-    direction: direction,
-    isDropDisabled: isDropDisabled,
-    isCombineEnabled: isCombineEnabled,
-    ignoreContainerClipping: ignoreContainerClipping,
-    getDroppableRef: getDroppableRef,
-    getPlaceholderRef: getPlaceholderRef
-  });
-  var placeholder = React.createElement(AnimateInOut, {
-    on: props.placeholder,
-    shouldAnimate: props.shouldAnimatePlaceholder
-  }, function (_ref) {
-    var onClose = _ref.onClose,
-        data = _ref.data,
-        animate = _ref.animate;
-    return React.createElement(Placeholder$1, {
-      placeholder: data,
-      onClose: onClose,
-      innerRef: setPlaceholderRef,
-      animate: animate,
-      styleContext: styleContext,
-      onTransitionEnd: onPlaceholderTransitionEnd
-    });
-  });
-  var provided = useMemo(function () {
-    return {
-      innerRef: setDroppableRef,
-      placeholder: placeholder,
-      droppableProps: {
-        'data-react-beautiful-dnd-droppable': styleContext
-      }
-    };
-  }, [placeholder, setDroppableRef, styleContext]);
-  var droppableContext = useMemo(function () {
-    return {
-      droppableId: droppableId,
-      type: type
-    };
-  }, [droppableId, type]);
-  useValidation({
-    props: props,
-    getDroppableRef: function getDroppableRef() {
-      return droppableRef.current;
-    },
-    getPlaceholderRef: function getPlaceholderRef() {
-      return placeholderRef.current;
-    }
-  });
-  return React.createElement(DroppableContext.Provider, {
-    value: droppableContext
-  }, children(provided, snapshot));
-}
-
-var isStrictEqual = (function (a, b) {
-  return a === b;
-});
-
-var whatIsDraggedOverFromResult = (function (result) {
-  var combine = result.combine,
-      destination = result.destination;
-
-  if (destination) {
-    return destination.droppableId;
-  }
-
-  if (combine) {
-    return combine.droppableId;
-  }
-
-  return null;
-});
-
-var isMatchingType = function isMatchingType(type, critical) {
-  return type === critical.droppable.type;
-};
-
-var getDraggable = function getDraggable(critical, dimensions) {
-  return dimensions.draggables[critical.draggable.id];
-};
-
-var makeMapStateToProps = function makeMapStateToProps() {
-  var idle = {
-    placeholder: null,
-    shouldAnimatePlaceholder: true,
-    snapshot: {
-      isDraggingOver: false,
-      draggingOverWith: null,
-      draggingFromThisWith: null
-    }
-  };
-
-  var idleWithoutAnimation = _extends({}, idle, {
-    shouldAnimatePlaceholder: false
-  });
-
-  var getMapProps = memoizeOne(function (id, isDraggingOver, dragging, snapshot) {
-    var isHome = dragging.descriptor.droppableId === id;
-
-    if (isHome) {
-      return {
-        placeholder: dragging.placeholder,
-        shouldAnimatePlaceholder: false,
-        snapshot: snapshot
-      };
-    }
-
-    if (!isDraggingOver) {
-      return idle;
-    }
-
-    return {
-      placeholder: dragging.placeholder,
-      shouldAnimatePlaceholder: true,
-      snapshot: snapshot
-    };
-  });
-  var getSnapshot = memoizeOne(function (id, isDraggingOver, dragging) {
-    var draggableId = dragging.descriptor.id;
-    var isHome = dragging.descriptor.droppableId === id;
-    var draggingOverWith = isDraggingOver ? draggableId : null;
-    var draggingFromThisWith = isHome ? draggableId : null;
-    return {
-      isDraggingOver: isDraggingOver,
-      draggingOverWith: draggingOverWith,
-      draggingFromThisWith: draggingFromThisWith
-    };
-  });
-
-  var selector = function selector(state, ownProps) {
-    var id = ownProps.droppableId;
-    var type = ownProps.type;
-
-    if (state.isDragging) {
-      var critical = state.critical;
-
-      if (!isMatchingType(type, critical)) {
-        return idle;
-      }
-
-      var dragging = getDraggable(critical, state.dimensions);
-      var isDraggingOver = whatIsDraggedOver(state.impact) === id;
-      var snapshot = getSnapshot(id, isDraggingOver, dragging);
-      return getMapProps(id, isDraggingOver, dragging, snapshot);
-    }
-
-    if (state.phase === 'DROP_ANIMATING') {
-      var completed = state.completed;
-
-      if (!isMatchingType(type, completed.critical)) {
-        return idle;
-      }
-
-      var _dragging = getDraggable(completed.critical, state.dimensions);
-
-      var _snapshot = getSnapshot(id, whatIsDraggedOverFromResult(completed.result) === id, _dragging);
-
-      return getMapProps(id, whatIsDraggedOver(completed.impact) === id, _dragging, _snapshot);
-    }
-
-    if (state.phase === 'IDLE' && !state.completed && state.shouldFlush) {
-      return idleWithoutAnimation;
-    }
-
-    if (state.phase === 'IDLE' && state.completed) {
-      var _completed = state.completed;
-
-      if (!isMatchingType(type, _completed.critical)) {
-        return idle;
-      }
-
-      var wasOver = whatIsDraggedOver(_completed.impact) === id;
-      var wasCombining = Boolean(_completed.impact.merge);
-
-      if (state.shouldFlush) {
-        return idleWithoutAnimation;
-      }
-
-      if (wasOver) {
-        return wasCombining ? idle : idleWithoutAnimation;
-      }
-
-      return idle;
-    }
-
-    return idle;
-  };
-
-  return selector;
-};
-var mapDispatchToProps = {
-  updateViewportMaxScroll: updateViewportMaxScroll
-};
-var defaultProps = {
-  type: 'DEFAULT',
-  direction: 'vertical',
-  isDropDisabled: false,
-  isCombineEnabled: false,
-  ignoreContainerClipping: false
-};
-var ConnectedDroppable = connect(makeMapStateToProps, mapDispatchToProps, null, {
-  context: StoreContext,
-  pure: true,
-  areStatePropsEqual: isStrictEqual
-})(Droppable);
-ConnectedDroppable.defaultProps = defaultProps;
-
 var zIndexOptions = {
   dragging: 5000,
   dropAnimating: 4500
@@ -6553,1209 +7802,6 @@ function getStyle$1(mapped) {
   return mapped.type === 'DRAGGING' ? getDraggingStyle(mapped) : getSecondaryStyle(mapped);
 }
 
-var createEventMarshal = (function () {
-  var isMouseDownHandled = false;
-
-  var handle = function handle() {
-    !!isMouseDownHandled ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot handle mouse down as it is already handled') : invariant(false) : void 0;
-    isMouseDownHandled = true;
-  };
-
-  var isHandled = function isHandled() {
-    return isMouseDownHandled;
-  };
-
-  var reset = function reset() {
-    isMouseDownHandled = false;
-  };
-
-  return {
-    handle: handle,
-    isHandled: isHandled,
-    reset: reset
-  };
-});
-
-var getOptions = function getOptions(shared, fromBinding) {
-  return _extends({}, shared, fromBinding);
-};
-
-var bindEvents = function bindEvents(el, bindings, sharedOptions) {
-  bindings.forEach(function (binding) {
-    var options = getOptions(sharedOptions, binding.options);
-    el.addEventListener(binding.eventName, binding.fn, options);
-  });
-};
-var unbindEvents = function unbindEvents(el, bindings, sharedOptions) {
-  bindings.forEach(function (binding) {
-    var options = getOptions(sharedOptions, binding.options);
-    el.removeEventListener(binding.eventName, binding.fn, options);
-  });
-};
-
-var createScheduler = (function (callbacks) {
-  var memoizedMove = memoizeOne(function (x, y) {
-    var point = {
-      x: x,
-      y: y
-    };
-    callbacks.onMove(point);
-  });
-  var move = rafSchd(function (point) {
-    return memoizedMove(point.x, point.y);
-  });
-  var moveUp = rafSchd(callbacks.onMoveUp);
-  var moveDown = rafSchd(callbacks.onMoveDown);
-  var moveRight = rafSchd(callbacks.onMoveRight);
-  var moveLeft = rafSchd(callbacks.onMoveLeft);
-  var windowScrollMove = rafSchd(callbacks.onWindowScroll);
-
-  var cancel = function cancel() {
-    move.cancel();
-    moveUp.cancel();
-    moveDown.cancel();
-    moveRight.cancel();
-    moveLeft.cancel();
-    windowScrollMove.cancel();
-  };
-
-  return {
-    move: move,
-    moveUp: moveUp,
-    moveDown: moveDown,
-    moveRight: moveRight,
-    moveLeft: moveLeft,
-    windowScrollMove: windowScrollMove,
-    cancel: cancel
-  };
-});
-
-var tab = 9;
-var enter = 13;
-var escape = 27;
-var space = 32;
-var pageUp = 33;
-var pageDown = 34;
-var end = 35;
-var home = 36;
-var arrowLeft = 37;
-var arrowUp = 38;
-var arrowRight = 39;
-var arrowDown = 40;
-
-var supportedEventName = function () {
-  var base = 'visibilitychange';
-
-  if (typeof document === 'undefined') {
-    return base;
-  }
-
-  var candidates = [base, "ms" + base, "webkit" + base, "moz" + base, "o" + base];
-  var supported = find(candidates, function (eventName) {
-    return "on" + eventName in document;
-  });
-  return supported || base;
-}();
-
-var sharedOptions = {
-  capture: true
-};
-var createPostDragEventPreventer = (function (getWindow) {
-  var isBound = false;
-
-  var bind = function bind() {
-    if (isBound) {
-      return;
-    }
-
-    isBound = true;
-    bindEvents(getWindow(), pointerEvents, sharedOptions);
-  };
-
-  var unbind = function unbind() {
-    if (!isBound) {
-      return;
-    }
-
-    isBound = false;
-    unbindEvents(getWindow(), pointerEvents, sharedOptions);
-  };
-
-  var pointerEvents = [{
-    eventName: 'click',
-    fn: function fn(event) {
-      event.preventDefault();
-      unbind();
-    }
-  }, {
-    eventName: 'mousedown',
-    fn: unbind
-  }, {
-    eventName: 'touchstart',
-    fn: unbind
-  }];
-
-  var preventNext = function preventNext() {
-    if (isBound) {
-      unbind();
-    }
-
-    bind();
-  };
-
-  var preventer = {
-    preventNext: preventNext,
-    abort: unbind
-  };
-  return preventer;
-});
-
-var sloppyClickThreshold = 5;
-var isSloppyClickThresholdExceeded = (function (original, current) {
-  return Math.abs(current.x - original.x) >= sloppyClickThreshold || Math.abs(current.y - original.y) >= sloppyClickThreshold;
-});
-
-var _preventedKeys;
-var preventedKeys = (_preventedKeys = {}, _preventedKeys[enter] = true, _preventedKeys[tab] = true, _preventedKeys);
-var preventStandardKeyEvents = (function (event) {
-  if (preventedKeys[event.keyCode]) {
-    event.preventDefault();
-  }
-});
-
-var primaryButton = 0;
-
-var noop$1 = function noop() {};
-
-var mouseDownMarshal = createEventMarshal();
-function useMouseSensor(args) {
-  var canStartCapturing = args.canStartCapturing,
-      getWindow = args.getWindow,
-      callbacks = args.callbacks,
-      onCaptureStart = args.onCaptureStart,
-      onCaptureEnd = args.onCaptureEnd;
-  var pendingRef = useRef(null);
-  var isDraggingRef = useRef(false);
-  var unbindWindowEventsRef = useRef(noop$1);
-  var getIsCapturing = useCallback(function () {
-    return Boolean(pendingRef.current || isDraggingRef.current);
-  }, []);
-  var schedule = useMemo(function () {
-    !!getIsCapturing() ? process.env.NODE_ENV !== "production" ? invariant(false, 'Should not recreate scheduler while capturing') : invariant(false) : void 0;
-    return createScheduler(callbacks);
-  }, [callbacks, getIsCapturing]);
-  var postDragEventPreventer = useMemo(function () {
-    return createPostDragEventPreventer(getWindow);
-  }, [getWindow]);
-  var stop = useCallback(function () {
-    if (!getIsCapturing()) {
-      return;
-    }
-
-    schedule.cancel();
-    unbindWindowEventsRef.current();
-    var shouldBlockClick = isDraggingRef.current;
-    mouseDownMarshal.reset();
-
-    if (shouldBlockClick) {
-      postDragEventPreventer.preventNext();
-    }
-
-    pendingRef.current = null;
-    isDraggingRef.current = false;
-    onCaptureEnd();
-  }, [getIsCapturing, onCaptureEnd, postDragEventPreventer, schedule]);
-  var cancel = useCallback(function () {
-    var wasDragging = isDraggingRef.current;
-    stop();
-
-    if (wasDragging) {
-      callbacks.onCancel();
-    }
-  }, [callbacks, stop]);
-  var startDragging = useCallback(function () {
-    !!isDraggingRef.current ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot start a drag while dragging') : invariant(false) : void 0;
-    var pending = pendingRef.current;
-    !pending ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot start a drag without a pending drag') : invariant(false) : void 0;
-    pendingRef.current = null;
-    isDraggingRef.current = true;
-    callbacks.onLift({
-      clientSelection: pending,
-      movementMode: 'FLUID'
-    });
-  }, [callbacks]);
-  var windowBindings = useMemo(function () {
-    !!getIsCapturing() ? process.env.NODE_ENV !== "production" ? invariant(false, 'Should not recreate window bindings while capturing') : invariant(false) : void 0;
-    var bindings = [{
-      eventName: 'mousemove',
-      fn: function fn(event) {
-        var button = event.button,
-            clientX = event.clientX,
-            clientY = event.clientY;
-
-        if (button !== primaryButton) {
-          return;
-        }
-
-        var point = {
-          x: clientX,
-          y: clientY
-        };
-
-        if (isDraggingRef.current) {
-          event.preventDefault();
-          schedule.move(point);
-          return;
-        }
-
-        var pending = pendingRef.current;
-
-        if (!pending) {
-          stop();
-          process.env.NODE_ENV !== "production" ? invariant(false, 'Expected there to be an active or pending drag when window mousemove event is received') : invariant(false);
-        }
-
-        if (!isSloppyClickThresholdExceeded(pending, point)) {
-          return;
-        }
-
-        event.preventDefault();
-        startDragging();
-      }
-    }, {
-      eventName: 'mouseup',
-      fn: function fn(event) {
-        var wasDragging = isDraggingRef.current;
-        stop();
-
-        if (wasDragging) {
-          event.preventDefault();
-          callbacks.onDrop();
-        }
-      }
-    }, {
-      eventName: 'mousedown',
-      fn: function fn(event) {
-        if (isDraggingRef.current) {
-          event.preventDefault();
-        }
-
-        cancel();
-      }
-    }, {
-      eventName: 'keydown',
-      fn: function fn(event) {
-        if (pendingRef.current) {
-          stop();
-          return;
-        }
-
-        if (event.keyCode === escape) {
-          event.preventDefault();
-          cancel();
-          return;
-        }
-
-        preventStandardKeyEvents(event);
-      }
-    }, {
-      eventName: 'resize',
-      fn: cancel
-    }, {
-      eventName: 'scroll',
-      options: {
-        passive: true,
-        capture: false
-      },
-      fn: function fn(event) {
-        if (event.currentTarget !== getWindow()) {
-          return;
-        }
-
-        if (pendingRef.current) {
-          stop();
-          return;
-        }
-
-        schedule.windowScrollMove();
-      }
-    }, {
-      eventName: 'webkitmouseforcedown',
-      fn: function fn() {
-        cancel();
-      }
-    }, {
-      eventName: supportedEventName,
-      fn: cancel
-    }];
-    return bindings;
-  }, [getIsCapturing, cancel, startDragging, schedule, stop, callbacks, getWindow]);
-  var bindWindowEvents = useCallback(function () {
-    var win = getWindow();
-    var options = {
-      capture: true
-    };
-
-    unbindWindowEventsRef.current = function () {
-      return unbindEvents(win, windowBindings, options);
-    };
-
-    bindEvents(win, windowBindings, options);
-  }, [getWindow, windowBindings]);
-  var startPendingDrag = useCallback(function (point) {
-    !!pendingRef.current ? process.env.NODE_ENV !== "production" ? invariant(false, 'Expected there to be no pending drag') : invariant(false) : void 0;
-    pendingRef.current = point;
-    onCaptureStart(stop);
-    bindWindowEvents();
-  }, [bindWindowEvents, onCaptureStart, stop]);
-  var onMouseDown = useCallback(function (event) {
-    if (mouseDownMarshal.isHandled()) {
-      return;
-    }
-
-    !!getIsCapturing() ? process.env.NODE_ENV !== "production" ? invariant(false, 'Should not be able to perform a mouse down while a drag or pending drag is occurring') : invariant(false) : void 0;
-
-    if (!canStartCapturing(event)) {
-      return;
-    }
-
-    if (event.button !== primaryButton) {
-      return;
-    }
-
-    if (event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) {
-      return;
-    }
-
-    mouseDownMarshal.handle();
-    event.preventDefault();
-    var point = {
-      x: event.clientX,
-      y: event.clientY
-    };
-    startPendingDrag(point);
-  }, [canStartCapturing, getIsCapturing, startPendingDrag]);
-  return onMouseDown;
-}
-
-function isElement(el) {
-  return el instanceof getWindowFromEl(el).Element;
-}
-
-var interactiveTagNames = {
-  input: true,
-  button: true,
-  textarea: true,
-  select: true,
-  option: true,
-  optgroup: true,
-  video: true,
-  audio: true
-};
-
-var isAnInteractiveElement = function isAnInteractiveElement(parent, current) {
-  if (current == null) {
-    return false;
-  }
-
-  var hasAnInteractiveTag = Boolean(interactiveTagNames[current.tagName.toLowerCase()]);
-
-  if (hasAnInteractiveTag) {
-    return true;
-  }
-
-  var attribute = current.getAttribute('contenteditable');
-
-  if (attribute === 'true' || attribute === '') {
-    return true;
-  }
-
-  if (current === parent) {
-    return false;
-  }
-
-  return isAnInteractiveElement(parent, current.parentElement);
-};
-
-var shouldAllowDraggingFromTarget = (function (event, canDragInteractiveElements) {
-  if (canDragInteractiveElements) {
-    return true;
-  }
-
-  var target = event.target,
-      currentTarget = event.currentTarget;
-
-  if (!isElement(target) || !isElement(currentTarget)) {
-    return true;
-  }
-
-  return !isAnInteractiveElement(currentTarget, target);
-});
-
-var getBorderBoxCenterPosition = (function (el) {
-  return getRect(el.getBoundingClientRect()).center;
-});
-
-var _scrollJumpKeys;
-var scrollJumpKeys = (_scrollJumpKeys = {}, _scrollJumpKeys[pageDown] = true, _scrollJumpKeys[pageUp] = true, _scrollJumpKeys[home] = true, _scrollJumpKeys[end] = true, _scrollJumpKeys);
-
-function noop$2() {}
-
-function useKeyboardSensor(args) {
-  var canStartCapturing = args.canStartCapturing,
-      getWindow = args.getWindow,
-      callbacks = args.callbacks,
-      onCaptureStart = args.onCaptureStart,
-      onCaptureEnd = args.onCaptureEnd,
-      getDraggableRef = args.getDraggableRef;
-  var isDraggingRef = useRef(false);
-  var unbindWindowEventsRef = useRef(noop$2);
-  var getIsDragging = useCallback(function () {
-    return isDraggingRef.current;
-  }, []);
-  var schedule = useMemo(function () {
-    !!getIsDragging() ? process.env.NODE_ENV !== "production" ? invariant(false, 'Should not recreate scheduler while capturing') : invariant(false) : void 0;
-    return createScheduler(callbacks);
-  }, [callbacks, getIsDragging]);
-  var stop = useCallback(function () {
-    if (!getIsDragging()) {
-      return;
-    }
-
-    schedule.cancel();
-    unbindWindowEventsRef.current();
-    isDraggingRef.current = false;
-    onCaptureEnd();
-  }, [getIsDragging, onCaptureEnd, schedule]);
-  var cancel = useCallback(function () {
-    var wasDragging = isDraggingRef.current;
-    stop();
-
-    if (wasDragging) {
-      callbacks.onCancel();
-    }
-  }, [callbacks, stop]);
-  var windowBindings = useMemo(function () {
-    !!getIsDragging() ? process.env.NODE_ENV !== "production" ? invariant(false, 'Should not recreate window bindings when dragging') : invariant(false) : void 0;
-    return [{
-      eventName: 'mousedown',
-      fn: cancel
-    }, {
-      eventName: 'mouseup',
-      fn: cancel
-    }, {
-      eventName: 'click',
-      fn: cancel
-    }, {
-      eventName: 'touchstart',
-      fn: cancel
-    }, {
-      eventName: 'resize',
-      fn: cancel
-    }, {
-      eventName: 'wheel',
-      fn: cancel,
-      options: {
-        passive: true
-      }
-    }, {
-      eventName: 'scroll',
-      options: {
-        capture: false
-      },
-      fn: function fn(event) {
-        if (event.currentTarget !== getWindow()) {
-          return;
-        }
-
-        callbacks.onWindowScroll();
-      }
-    }, {
-      eventName: supportedEventName,
-      fn: cancel
-    }];
-  }, [callbacks, cancel, getIsDragging, getWindow]);
-  var bindWindowEvents = useCallback(function () {
-    var win = getWindow();
-    var options = {
-      capture: true
-    };
-
-    unbindWindowEventsRef.current = function () {
-      return unbindEvents(win, windowBindings, options);
-    };
-
-    bindEvents(win, windowBindings, options);
-  }, [getWindow, windowBindings]);
-  var startDragging = useCallback(function () {
-    !!isDraggingRef.current ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot start a drag while dragging') : invariant(false) : void 0;
-    var ref = getDraggableRef();
-    !ref ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot start a keyboard drag without a draggable ref') : invariant(false) : void 0;
-    isDraggingRef.current = true;
-    onCaptureStart(stop);
-    bindWindowEvents();
-    var center = getBorderBoxCenterPosition(ref);
-    callbacks.onLift({
-      clientSelection: center,
-      movementMode: 'SNAP'
-    });
-  }, [bindWindowEvents, callbacks, getDraggableRef, onCaptureStart, stop]);
-  var onKeyDown = useCallback(function (event) {
-    if (!getIsDragging()) {
-      if (event.defaultPrevented) {
-        return;
-      }
-
-      if (!canStartCapturing(event)) {
-        return;
-      }
-
-      if (event.keyCode !== space) {
-        return;
-      }
-
-      event.preventDefault();
-      startDragging();
-      return;
-    }
-
-    if (event.keyCode === escape) {
-      event.preventDefault();
-      cancel();
-      return;
-    }
-
-    if (event.keyCode === space) {
-      event.preventDefault();
-      stop();
-      callbacks.onDrop();
-      return;
-    }
-
-    if (event.keyCode === arrowDown) {
-      event.preventDefault();
-      schedule.moveDown();
-      return;
-    }
-
-    if (event.keyCode === arrowUp) {
-      event.preventDefault();
-      schedule.moveUp();
-      return;
-    }
-
-    if (event.keyCode === arrowRight) {
-      event.preventDefault();
-      schedule.moveRight();
-      return;
-    }
-
-    if (event.keyCode === arrowLeft) {
-      event.preventDefault();
-      schedule.moveLeft();
-      return;
-    }
-
-    if (scrollJumpKeys[event.keyCode]) {
-      event.preventDefault();
-      return;
-    }
-
-    preventStandardKeyEvents(event);
-  }, [callbacks, canStartCapturing, cancel, getIsDragging, schedule, startDragging, stop]);
-  return onKeyDown;
-}
-
-var timeForLongPress = 120;
-var forcePressThreshold = 0.15;
-var touchStartMarshal = createEventMarshal();
-
-var noop$3 = function noop() {};
-
-function useTouchSensor(args) {
-  var callbacks = args.callbacks,
-      getWindow = args.getWindow,
-      canStartCapturing = args.canStartCapturing,
-      getShouldRespectForcePress = args.getShouldRespectForcePress,
-      onCaptureStart = args.onCaptureStart,
-      onCaptureEnd = args.onCaptureEnd;
-  var pendingRef = useRef(null);
-  var isDraggingRef = useRef(false);
-  var hasMovedRef = useRef(false);
-  var unbindWindowEventsRef = useRef(noop$3);
-  var getIsCapturing = useCallback(function () {
-    return Boolean(pendingRef.current || isDraggingRef.current);
-  }, []);
-  var postDragClickPreventer = useMemo(function () {
-    return createPostDragEventPreventer(getWindow);
-  }, [getWindow]);
-  var schedule = useMemo(function () {
-    !!getIsCapturing() ? process.env.NODE_ENV !== "production" ? invariant(false, 'Should not recreate scheduler while capturing') : invariant(false) : void 0;
-    return createScheduler(callbacks);
-  }, [callbacks, getIsCapturing]);
-  var stop = useCallback(function () {
-    if (!getIsCapturing()) {
-      return;
-    }
-
-    schedule.cancel();
-    unbindWindowEventsRef.current();
-    touchStartMarshal.reset();
-    hasMovedRef.current = false;
-    onCaptureEnd();
-
-    if (isDraggingRef.current) {
-      postDragClickPreventer.preventNext();
-      isDraggingRef.current = false;
-      return;
-    }
-
-    var pending = pendingRef.current;
-    !pending ? process.env.NODE_ENV !== "production" ? invariant(false, 'Expected a pending drag') : invariant(false) : void 0;
-    clearTimeout(pending.longPressTimerId);
-    pendingRef.current = null;
-  }, [getIsCapturing, onCaptureEnd, postDragClickPreventer, schedule]);
-  var cancel = useCallback(function () {
-    var wasDragging = isDraggingRef.current;
-    stop();
-
-    if (wasDragging) {
-      callbacks.onCancel();
-    }
-  }, [callbacks, stop]);
-  var windowBindings = useMemo(function () {
-    !!getIsCapturing() ? process.env.NODE_ENV !== "production" ? invariant(false, 'Should not recreate window bindings while capturing') : invariant(false) : void 0;
-    var bindings = [{
-      eventName: 'touchmove',
-      options: {
-        passive: false,
-        capture: false
-      },
-      fn: function fn(event) {
-        if (!isDraggingRef.current) {
-          stop();
-          return;
-        }
-
-        if (!hasMovedRef.current) {
-          hasMovedRef.current = true;
-        }
-
-        var touch = event.touches[0];
-
-        if (!touch) {
-          return;
-        }
-
-        var point = {
-          x: touch.clientX,
-          y: touch.clientY
-        };
-        event.preventDefault();
-        schedule.move(point);
-      }
-    }, {
-      eventName: 'touchend',
-      fn: function fn(event) {
-        if (!isDraggingRef.current) {
-          stop();
-          return;
-        }
-
-        event.preventDefault();
-        stop();
-        callbacks.onDrop();
-      }
-    }, {
-      eventName: 'touchcancel',
-      fn: function fn(event) {
-        if (!isDraggingRef.current) {
-          stop();
-          return;
-        }
-
-        event.preventDefault();
-        cancel();
-      }
-    }, {
-      eventName: 'touchstart',
-      fn: cancel
-    }, {
-      eventName: 'orientationchange',
-      fn: cancel
-    }, {
-      eventName: 'resize',
-      fn: cancel
-    }, {
-      eventName: 'scroll',
-      options: {
-        passive: true,
-        capture: false
-      },
-      fn: function fn() {
-        if (pendingRef.current) {
-          stop();
-          return;
-        }
-
-        schedule.windowScrollMove();
-      }
-    }, {
-      eventName: 'contextmenu',
-      fn: function fn(event) {
-        event.preventDefault();
-      }
-    }, {
-      eventName: 'keydown',
-      fn: function fn(event) {
-        if (!isDraggingRef.current) {
-          cancel();
-          return;
-        }
-
-        if (event.keyCode === escape) {
-          event.preventDefault();
-        }
-
-        cancel();
-      }
-    }, {
-      eventName: 'touchforcechange',
-      fn: function fn(event) {
-        var touch = event.touches[0];
-        var isForcePress = touch.force >= forcePressThreshold;
-
-        if (!isForcePress) {
-          return;
-        }
-
-        var shouldRespect = getShouldRespectForcePress();
-
-        if (pendingRef.current) {
-          if (shouldRespect) {
-            cancel();
-          }
-
-          return;
-        }
-
-        if (shouldRespect) {
-          if (hasMovedRef.current) {
-            event.preventDefault();
-            return;
-          }
-
-          cancel();
-          return;
-        }
-
-        event.preventDefault();
-      }
-    }, {
-      eventName: supportedEventName,
-      fn: cancel
-    }];
-    return bindings;
-  }, [callbacks, cancel, getIsCapturing, getShouldRespectForcePress, schedule, stop]);
-  var bindWindowEvents = useCallback(function () {
-    var win = getWindow();
-    var options = {
-      capture: true
-    };
-
-    unbindWindowEventsRef.current = function () {
-      return unbindEvents(win, windowBindings, options);
-    };
-
-    bindEvents(win, windowBindings, options);
-  }, [getWindow, windowBindings]);
-  var startDragging = useCallback(function () {
-    var pending = pendingRef.current;
-    !pending ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot start a drag without a pending drag') : invariant(false) : void 0;
-    isDraggingRef.current = true;
-    pendingRef.current = null;
-    hasMovedRef.current = false;
-    callbacks.onLift({
-      clientSelection: pending.point,
-      movementMode: 'FLUID'
-    });
-  }, [callbacks]);
-  var startPendingDrag = useCallback(function (event) {
-    !!pendingRef.current ? process.env.NODE_ENV !== "production" ? invariant(false, 'Expected there to be no pending drag') : invariant(false) : void 0;
-    var touch = event.touches[0];
-    var clientX = touch.clientX,
-        clientY = touch.clientY;
-    var point = {
-      x: clientX,
-      y: clientY
-    };
-    var longPressTimerId = setTimeout(startDragging, timeForLongPress);
-    var pending = {
-      point: point,
-      longPressTimerId: longPressTimerId
-    };
-    pendingRef.current = pending;
-    onCaptureStart(stop);
-    bindWindowEvents();
-  }, [bindWindowEvents, onCaptureStart, startDragging, stop]);
-
-  var onTouchStart = function onTouchStart(event) {
-    if (touchStartMarshal.isHandled()) {
-      return;
-    }
-
-    !!getIsCapturing() ? process.env.NODE_ENV !== "production" ? invariant(false, 'Should not be able to perform a touch start while a drag or pending drag is occurring') : invariant(false) : void 0;
-
-    if (!canStartCapturing(event)) {
-      return;
-    }
-
-    touchStartMarshal.handle();
-    startPendingDrag(event);
-  };
-
-  useIsomorphicLayoutEffect(function webkitHack() {
-    var unbind = bindEvents(window, [{
-      eventName: 'touchmove',
-      fn: noop$3,
-      options: {
-        capture: false,
-        passive: false
-      }
-    }]);
-    return unbind;
-  }, []);
-  return onTouchStart;
-}
-
-function isSvgElement(el) {
-  return Boolean(getWindowFromEl(el).SVGElement) && el instanceof getWindowFromEl(el).SVGElement;
-}
-
-var selector = "[" + dragHandle + "]";
-
-var throwIfSVG = function throwIfSVG(el) {
-  !!isSvgElement(el) ? process.env.NODE_ENV !== "production" ? invariant(false, "A drag handle cannot be an SVGElement: it has inconsistent focus support.\n\n    More information: https://github.com/atlassian/react-beautiful-dnd/blob/master/docs/guides/dragging-svgs.md") : invariant(false) : void 0;
-};
-
-var getDragHandleRef = function getDragHandleRef(draggableRef) {
-  if (draggableRef.hasAttribute(dragHandle)) {
-    throwIfSVG(draggableRef);
-    return draggableRef;
-  }
-
-  var el = draggableRef.querySelector(selector);
-  throwIfSVG(draggableRef);
-  !el ? process.env.NODE_ENV !== "production" ? invariant(false, "\n      Cannot find drag handle element inside of Draggable.\n      Please be sure to apply the {...provided.dragHandleProps} to your Draggable\n\n      More information: https://github.com/atlassian/react-beautiful-dnd/blob/master/docs/api/draggable.md\n    ") : invariant(false) : void 0;
-  !isHtmlElement(el) ? process.env.NODE_ENV !== "production" ? invariant(false, 'A drag handle must be a HTMLElement') : invariant(false) : void 0;
-  return el;
-};
-
-function useValidation$1(_ref) {
-  var isEnabled = _ref.isEnabled,
-      getDraggableRef = _ref.getDraggableRef;
-  useEffect(function () {
-    if (process.env.NODE_ENV !== 'production') {
-      if (!isEnabled) {
-        return;
-      }
-
-      var draggableRef = getDraggableRef();
-      !draggableRef ? process.env.NODE_ENV !== "production" ? invariant(false, 'Drag handle was unable to find draggable ref') : invariant(false) : void 0;
-      getDragHandleRef(draggableRef);
-    }
-  }, [getDraggableRef, isEnabled]);
-}
-
-var retainingFocusFor = null;
-var listenerOptions = {
-  capture: true
-};
-
-var clearRetentionOnFocusChange = function () {
-  var isBound = false;
-
-  var bind = function bind() {
-    if (isBound) {
-      return;
-    }
-
-    isBound = true;
-    window.addEventListener('focus', onWindowFocusChange, listenerOptions);
-  };
-
-  var unbind = function unbind() {
-    if (!isBound) {
-      return;
-    }
-
-    isBound = false;
-    window.removeEventListener('focus', onWindowFocusChange, listenerOptions);
-  };
-
-  var onWindowFocusChange = function onWindowFocusChange() {
-    unbind();
-    retainingFocusFor = null;
-  };
-
-  var result = function result() {
-    return bind();
-  };
-
-  result.cancel = function () {
-    return unbind();
-  };
-
-  return result;
-}();
-
-var retain = function retain(id) {
-  retainingFocusFor = id;
-  clearRetentionOnFocusChange();
-};
-
-var tryRestoreFocus = function tryRestoreFocus(id, draggableRef) {
-  if (!retainingFocusFor) {
-    return;
-  }
-
-  if (id !== retainingFocusFor) {
-    return;
-  }
-
-  retainingFocusFor = null;
-  clearRetentionOnFocusChange.cancel();
-  var dragHandleRef = getDragHandleRef(draggableRef);
-
-  if (!dragHandleRef) {
-    process.env.NODE_ENV !== "production" ? warning('Could not find drag handle in the DOM to focus on it') : void 0;
-    return;
-  }
-
-  dragHandleRef.focus();
-};
-
-var retainer = {
-  retain: retain,
-  tryRestoreFocus: tryRestoreFocus
-};
-
-function noop$4() {}
-
-function useFocusRetainer(args) {
-  var isFocusedRef = useRef(false);
-  var lastArgsRef = usePrevious(args);
-  var getDraggableRef = args.getDraggableRef;
-  var onFocus = useCallback(function () {
-    isFocusedRef.current = true;
-  }, []);
-  var onBlur = useCallback(function () {
-    isFocusedRef.current = false;
-  }, []);
-  useIsomorphicLayoutEffect(function () {
-    var first = lastArgsRef.current;
-
-    if (!first.isEnabled) {
-      return noop$4;
-    }
-
-    var draggable = getDraggableRef();
-    !draggable ? process.env.NODE_ENV !== "production" ? invariant(false, 'Drag handle could not obtain draggable ref') : invariant(false) : void 0;
-    var dragHandle = getDragHandleRef(draggable);
-    retainer.tryRestoreFocus(first.draggableId, dragHandle);
-    return function () {
-      var last = lastArgsRef.current;
-
-      var shouldRetainFocus = function () {
-        if (!last.isEnabled) {
-          return false;
-        }
-
-        if (!isFocusedRef.current) {
-          return false;
-        }
-
-        return last.isDragging || last.isDropAnimating;
-      }();
-
-      if (shouldRetainFocus) {
-        retainer.retain(last.draggableId);
-      }
-    };
-  }, [getDraggableRef, lastArgsRef]);
-  var lastDraggableRef = useRef(null);
-  useIsomorphicLayoutEffect(function () {
-    if (!lastDraggableRef.current) {
-      return;
-    }
-
-    var draggableRef = getDraggableRef();
-
-    if (!draggableRef) {
-      return;
-    }
-
-    if (draggableRef === lastDraggableRef.current) {
-      return;
-    }
-
-    if (isFocusedRef.current && lastArgsRef.current.isEnabled) {
-      getDragHandleRef(draggableRef).focus();
-    }
-  });
-  useIsomorphicLayoutEffect(function () {
-    lastDraggableRef.current = getDraggableRef();
-  });
-  return {
-    onBlur: onBlur,
-    onFocus: onFocus
-  };
-}
-
-function preventHtml5Dnd(event) {
-  event.preventDefault();
-}
-
-function useDragHandle(args) {
-  var capturingRef = useRef(null);
-  var onCaptureStart = useCallback(function (abort) {
-    !!capturingRef.current ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot start capturing while something else is') : invariant(false) : void 0;
-    capturingRef.current = {
-      abort: abort
-    };
-  }, []);
-  var onCaptureEnd = useCallback(function () {
-    !capturingRef.current ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot stop capturing while nothing is capturing') : invariant(false) : void 0;
-    capturingRef.current = null;
-  }, []);
-  var abortCapture = useCallback(function () {
-    !capturingRef.current ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot abort capture when there is none') : invariant(false) : void 0;
-    capturingRef.current.abort();
-  }, []);
-
-  var _useRequiredContext = useRequiredContext(AppContext),
-      canLift = _useRequiredContext.canLift,
-      styleContext = _useRequiredContext.style;
-
-  var isDragging = args.isDragging,
-      isEnabled = args.isEnabled,
-      draggableId = args.draggableId,
-      callbacks = args.callbacks,
-      getDraggableRef = args.getDraggableRef,
-      getShouldRespectForcePress = args.getShouldRespectForcePress,
-      canDragInteractiveElements = args.canDragInteractiveElements;
-  var lastArgsRef = usePrevious(args);
-  useValidation$1({
-    isEnabled: isEnabled,
-    getDraggableRef: getDraggableRef
-  });
-  var getWindow = useCallback(function () {
-    return getWindowFromEl(getDraggableRef());
-  }, [getDraggableRef]);
-  var canStartCapturing = useCallback(function (event) {
-    if (!isEnabled) {
-      return false;
-    }
-
-    if (capturingRef.current) {
-      return false;
-    }
-
-    if (!canLift(draggableId)) {
-      return false;
-    }
-
-    return shouldAllowDraggingFromTarget(event, canDragInteractiveElements);
-  }, [canDragInteractiveElements, canLift, draggableId, isEnabled]);
-
-  var _useFocusRetainer = useFocusRetainer(args),
-      onBlur = _useFocusRetainer.onBlur,
-      onFocus = _useFocusRetainer.onFocus;
-
-  var mouseArgs = useMemo(function () {
-    return {
-      callbacks: callbacks,
-      getDraggableRef: getDraggableRef,
-      getWindow: getWindow,
-      canStartCapturing: canStartCapturing,
-      onCaptureStart: onCaptureStart,
-      onCaptureEnd: onCaptureEnd,
-      getShouldRespectForcePress: getShouldRespectForcePress
-    };
-  }, [callbacks, getDraggableRef, getWindow, canStartCapturing, onCaptureStart, onCaptureEnd, getShouldRespectForcePress]);
-  var onMouseDown = useMouseSensor(mouseArgs);
-  var keyboardArgs = useMemo(function () {
-    return {
-      callbacks: callbacks,
-      getDraggableRef: getDraggableRef,
-      getWindow: getWindow,
-      canStartCapturing: canStartCapturing,
-      onCaptureStart: onCaptureStart,
-      onCaptureEnd: onCaptureEnd
-    };
-  }, [callbacks, canStartCapturing, getDraggableRef, getWindow, onCaptureEnd, onCaptureStart]);
-  var onKeyDown = useKeyboardSensor(keyboardArgs);
-  var touchArgs = useMemo(function () {
-    return {
-      callbacks: callbacks,
-      getDraggableRef: getDraggableRef,
-      getWindow: getWindow,
-      canStartCapturing: canStartCapturing,
-      getShouldRespectForcePress: getShouldRespectForcePress,
-      onCaptureStart: onCaptureStart,
-      onCaptureEnd: onCaptureEnd
-    };
-  }, [callbacks, getDraggableRef, getWindow, canStartCapturing, getShouldRespectForcePress, onCaptureStart, onCaptureEnd]);
-  var onTouchStart = useTouchSensor(touchArgs);
-  useIsomorphicLayoutEffect(function () {
-    return function () {
-      if (!capturingRef.current) {
-        return;
-      }
-
-      abortCapture();
-
-      if (lastArgsRef.current.isDragging) {
-        lastArgsRef.current.callbacks.onCancel();
-      }
-    };
-  }, []);
-
-  if (!isEnabled && capturingRef.current) {
-    abortCapture();
-
-    if (lastArgsRef.current.isDragging) {
-      process.env.NODE_ENV !== "production" ? warning('You have disabled dragging on a Draggable while it was dragging. The drag has been cancelled') : void 0;
-      callbacks.onCancel();
-    }
-  }
-
-  useIsomorphicLayoutEffect(function () {
-    if (!isDragging && capturingRef.current) {
-      abortCapture();
-    }
-  }, [abortCapture, isDragging]);
-  var props = useMemo(function () {
-    if (!isEnabled) {
-      return null;
-    }
-
-    return {
-      onMouseDown: onMouseDown,
-      onKeyDown: onKeyDown,
-      onTouchStart: onTouchStart,
-      onFocus: onFocus,
-      onBlur: onBlur,
-      tabIndex: 0,
-      'data-react-beautiful-dnd-drag-handle': styleContext,
-      'aria-roledescription': 'Draggable item. Press space bar to lift',
-      draggable: false,
-      onDragStart: preventHtml5Dnd
-    };
-  }, [isEnabled, onBlur, onFocus, onKeyDown, onMouseDown, onTouchStart, styleContext]);
-  return props;
-}
-
 function getDimension$1(descriptor, el, windowScroll) {
   if (windowScroll === void 0) {
     windowScroll = origin;
@@ -7784,12 +7830,16 @@ function getDimension$1(descriptor, el, windowScroll) {
   return dimension;
 }
 
-function useDraggableDimensionPublisher(args) {
+function useDraggablePublisher(args) {
+  var uniqueId = useUniqueId('draggable');
   var draggableId = args.draggableId,
       index = args.index,
-      getDraggableRef = args.getDraggableRef;
+      getDraggableRef = args.getDraggableRef,
+      canDragInteractiveElements = args.canDragInteractiveElements,
+      shouldRespectForcePress = args.shouldRespectForcePress,
+      isEnabled = args.isEnabled;
   var appContext = useRequiredContext(AppContext);
-  var marshal = appContext.marshal;
+  var registry = appContext.registry;
   var droppableContext = useRequiredContext(DroppableContext);
   var droppableId = droppableContext.droppableId,
       type = droppableContext.type;
@@ -7802,50 +7852,73 @@ function useDraggableDimensionPublisher(args) {
     };
     return result;
   }, [draggableId, droppableId, index, type]);
-  var publishedDescriptorRef = useRef(descriptor);
-  var makeDimension = useCallback(function (windowScroll) {
-    var latest = publishedDescriptorRef.current;
+  var options = useMemo(function () {
+    return {
+      canDragInteractiveElements: canDragInteractiveElements,
+      shouldRespectForcePress: shouldRespectForcePress,
+      isEnabled: isEnabled
+    };
+  }, [canDragInteractiveElements, isEnabled, shouldRespectForcePress]);
+  var getDimension = useCallback(function (windowScroll) {
     var el = getDraggableRef();
     !el ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot get dimension when no ref is set') : invariant(false) : void 0;
-    return getDimension$1(latest, el, windowScroll);
-  }, [getDraggableRef]);
-  useIsomorphicLayoutEffect(function () {
-    marshal.registerDraggable(publishedDescriptorRef.current, makeDimension);
-    return function () {
-      return marshal.unregisterDraggable(publishedDescriptorRef.current);
+    return getDimension$1(descriptor, el, windowScroll);
+  }, [descriptor, getDraggableRef]);
+  var entry = useMemo(function () {
+    return {
+      uniqueId: uniqueId,
+      descriptor: descriptor,
+      options: options,
+      getDimension: getDimension
     };
-  }, [makeDimension, marshal]);
+  }, [descriptor, getDimension, options, uniqueId]);
+  var publishedRef = useRef(entry);
+  var isFirstPublishRef = useRef(true);
   useIsomorphicLayoutEffect(function () {
-    if (publishedDescriptorRef.current === descriptor) {
+    registry.draggable.register(publishedRef.current);
+    return function () {
+      return registry.draggable.unregister(publishedRef.current);
+    };
+  }, [registry.draggable]);
+  useIsomorphicLayoutEffect(function () {
+    if (isFirstPublishRef.current) {
+      isFirstPublishRef.current = false;
       return;
     }
 
-    var previous = publishedDescriptorRef.current;
-    publishedDescriptorRef.current = descriptor;
-    marshal.updateDraggable(previous, descriptor, makeDimension);
-  }, [descriptor, makeDimension, marshal]);
+    var last = publishedRef.current;
+    publishedRef.current = entry;
+    registry.draggable.update(entry, last);
+  }, [entry, registry.draggable]);
 }
 
-function checkOwnProps$1(props) {
+function checkOwnProps(props) {
   !_Number$isInteger(props.index) ? process.env.NODE_ENV !== "production" ? invariant(false, 'Draggable requires an integer index prop') : invariant(false) : void 0;
   !props.draggableId ? process.env.NODE_ENV !== "production" ? invariant(false, 'Draggable requires a draggableId') : invariant(false) : void 0;
-  !(typeof props.isDragDisabled === 'boolean') ? process.env.NODE_ENV !== "production" ? invariant(false, 'isDragDisabled must be a boolean') : invariant(false) : void 0;
 }
 
-function checkForOutdatedProps(props) {
-  if (Object.prototype.hasOwnProperty.call(props, 'shouldRespectForceTouch')) {
-    process.env.NODE_ENV !== "production" ? warning('shouldRespectForceTouch has been renamed to shouldRespectForcePress') : void 0;
-  }
-}
-
-function useValidation$2(props, getRef) {
+function useValidation$1(props, getRef) {
   useEffect(function () {
     if (process.env.NODE_ENV !== 'production') {
-      checkOwnProps$1(props);
-      checkForOutdatedProps(props);
-      checkIsValidInnerRef(getRef());
+      checkOwnProps(props);
+
+      if (props.mapped.type !== 'DRAGGING') {
+        checkIsValidInnerRef(getRef());
+      }
     }
   });
+}
+function useClonePropValidation(isClone) {
+  var initialRef = useRef(isClone);
+  useEffect(function () {
+    if (isClone !== initialRef.current) {
+      process.env.NODE_ENV !== "production" ? warning('Draggable isClone prop value changed during component life') : void 0;
+    }
+  }, [isClone]);
+}
+
+function preventHtml5Dnd(event) {
+  event.preventDefault();
 }
 
 function Draggable(props) {
@@ -7856,93 +7929,47 @@ function Draggable(props) {
   var getRef = useCallback(function () {
     return ref.current;
   }, []);
-  var appContext = useRequiredContext(AppContext);
-  useValidation$2(props, getRef);
+
+  var _useRequiredContext = useRequiredContext(AppContext),
+      contextId = _useRequiredContext.contextId,
+      liftInstructionId = _useRequiredContext.liftInstructionId;
+
   var children = props.children,
       draggableId = props.draggableId,
-      isDragDisabled = props.isDragDisabled,
+      isEnabled = props.isEnabled,
       shouldRespectForcePress = props.shouldRespectForcePress,
-      canDragInteractiveElements = props.disableInteractiveElementBlocking,
+      canDragInteractiveElements = props.canDragInteractiveElements,
       index = props.index,
+      isClone = props.isClone,
       mapped = props.mapped,
-      moveUpAction = props.moveUp,
-      moveAction = props.move,
-      dropAction = props.drop,
-      moveDownAction = props.moveDown,
-      moveRightAction = props.moveRight,
-      moveLeftAction = props.moveLeft,
-      moveByWindowScrollAction = props.moveByWindowScroll,
-      liftAction = props.lift,
       dropAnimationFinishedAction = props.dropAnimationFinished;
-  var forPublisher = useMemo(function () {
-    return {
-      draggableId: draggableId,
-      index: index,
-      getDraggableRef: getRef
-    };
-  }, [draggableId, getRef, index]);
-  useDraggableDimensionPublisher(forPublisher);
-  var onLift = useCallback(function (options) {
-    start('LIFT');
-    var el = ref.current;
-    !el ? process.env.NODE_ENV !== "production" ? invariant(false) : invariant(false) : void 0;
-    !!isDragDisabled ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot lift a Draggable when it is disabled') : invariant(false) : void 0;
-    var clientSelection = options.clientSelection,
-        movementMode = options.movementMode;
-    liftAction({
-      id: draggableId,
-      clientSelection: clientSelection,
-      movementMode: movementMode
-    });
-    finish('LIFT');
-  }, [draggableId, isDragDisabled, liftAction]);
-  var getShouldRespectForcePress = useCallback(function () {
-    return shouldRespectForcePress;
-  }, [shouldRespectForcePress]);
-  var callbacks = useMemo(function () {
-    return {
-      onLift: onLift,
-      onMove: function onMove(clientSelection) {
-        return moveAction({
-          client: clientSelection
-        });
-      },
-      onDrop: function onDrop() {
-        return dropAction({
-          reason: 'DROP'
-        });
-      },
-      onCancel: function onCancel() {
-        return dropAction({
-          reason: 'CANCEL'
-        });
-      },
-      onMoveUp: moveUpAction,
-      onMoveDown: moveDownAction,
-      onMoveRight: moveRightAction,
-      onMoveLeft: moveLeftAction,
-      onWindowScroll: function onWindowScroll() {
-        return moveByWindowScrollAction({
-          newScroll: getWindowScroll()
-        });
-      }
-    };
-  }, [dropAction, moveAction, moveByWindowScrollAction, moveDownAction, moveLeftAction, moveRightAction, moveUpAction, onLift]);
-  var isDragging = mapped.type === 'DRAGGING';
-  var isDropAnimating = mapped.type === 'DRAGGING' && Boolean(mapped.dropping);
-  var dragHandleArgs = useMemo(function () {
-    return {
-      draggableId: draggableId,
-      isDragging: isDragging,
-      isDropAnimating: isDropAnimating,
-      isEnabled: !isDragDisabled,
-      callbacks: callbacks,
-      getDraggableRef: getRef,
-      canDragInteractiveElements: canDragInteractiveElements,
-      getShouldRespectForcePress: getShouldRespectForcePress
-    };
-  }, [callbacks, canDragInteractiveElements, draggableId, getRef, getShouldRespectForcePress, isDragDisabled, isDragging, isDropAnimating]);
-  var dragHandleProps = useDragHandle(dragHandleArgs);
+  useValidation$1(props, getRef);
+  useClonePropValidation(isClone);
+
+  if (!isClone) {
+    var forPublisher = useMemo(function () {
+      return {
+        draggableId: draggableId,
+        index: index,
+        getDraggableRef: getRef,
+        canDragInteractiveElements: canDragInteractiveElements,
+        shouldRespectForcePress: shouldRespectForcePress,
+        isEnabled: isEnabled
+      };
+    }, [canDragInteractiveElements, draggableId, getRef, index, isEnabled, shouldRespectForcePress]);
+    useDraggablePublisher(forPublisher);
+  }
+
+  var dragHandleProps = useMemo(function () {
+    return isEnabled ? {
+      tabIndex: 0,
+      'data-rbd-drag-handle-draggable-id': draggableId,
+      'data-rbd-drag-handle-context-id': contextId,
+      'aria-labelledby': liftInstructionId,
+      draggable: false,
+      onDragStart: preventHtml5Dnd
+    } : null;
+  }, [contextId, draggableId, isEnabled, liftInstructionId]);
   var onMoveEnd = useCallback(function (event) {
     if (mapped.type !== 'DRAGGING') {
       return;
@@ -7964,27 +7991,53 @@ function Draggable(props) {
     var result = {
       innerRef: setRef,
       draggableProps: {
-        'data-react-beautiful-dnd-draggable': appContext.style,
+        'data-rbd-draggable-context-id': contextId,
+        'data-rbd-draggable-id': draggableId,
         style: style,
         onTransitionEnd: onTransitionEnd
       },
       dragHandleProps: dragHandleProps
     };
     return result;
-  }, [appContext.style, dragHandleProps, mapped, onMoveEnd, setRef]);
+  }, [contextId, dragHandleProps, draggableId, mapped, onMoveEnd, setRef]);
   return children(provided, mapped.snapshot);
 }
+
+var isStrictEqual = (function (a, b) {
+  return a === b;
+});
+
+var whatIsDraggedOverFromResult = (function (result) {
+  var combine = result.combine,
+      destination = result.destination;
+
+  if (destination) {
+    return destination.droppableId;
+  }
+
+  if (combine) {
+    return combine.droppableId;
+  }
+
+  return null;
+});
 
 var getCombineWithFromResult = function getCombineWithFromResult(result) {
   return result.combine ? result.combine.draggableId : null;
 };
 
 var getCombineWithFromImpact = function getCombineWithFromImpact(impact) {
-  return impact.merge ? impact.merge.combine.draggableId : null;
+  return impact.at && impact.at.type === 'COMBINE' ? impact.at.combine.draggableId : null;
 };
 
-var makeMapStateToProps$1 = function makeMapStateToProps() {
-  var getDraggingSnapshot = memoizeOne(function (mode, draggingOver, combineWith, dropping) {
+function getDraggableSelector() {
+  var memoizedOffset = memoizeOne(function (x, y) {
+    return {
+      x: x,
+      y: y
+    };
+  });
+  var getMemoizedSnapshot = memoizeOne(function (mode, draggingOver, combineWith, dropping) {
     return {
       isDragging: true,
       isDropAnimating: Boolean(dropping),
@@ -7995,33 +8048,7 @@ var makeMapStateToProps$1 = function makeMapStateToProps() {
       combineTargetFor: null
     };
   });
-  var getSecondarySnapshot = memoizeOne(function (combineTargetFor) {
-    return {
-      isDragging: false,
-      isDropAnimating: false,
-      dropAnimation: null,
-      mode: null,
-      draggingOver: null,
-      combineTargetFor: combineTargetFor,
-      combineWith: null
-    };
-  });
-  var defaultMapProps = {
-    mapped: {
-      type: 'SECONDARY',
-      offset: origin,
-      combineTargetFor: null,
-      shouldAnimateDisplacement: true,
-      snapshot: getSecondarySnapshot(null)
-    }
-  };
-  var memoizedOffset = memoizeOne(function (x, y) {
-    return {
-      x: x,
-      y: y
-    };
-  });
-  var getDraggingProps = memoizeOne(function (offset, mode, dimension, draggingOver, combineWith, forceShouldAnimate) {
+  var getMemoizedProps = memoizeOne(function (offset, mode, dimension, draggingOver, combineWith, forceShouldAnimate) {
     return {
       mapped: {
         type: 'DRAGGING',
@@ -8032,51 +8059,12 @@ var makeMapStateToProps$1 = function makeMapStateToProps() {
         offset: offset,
         dimension: dimension,
         forceShouldAnimate: forceShouldAnimate,
-        snapshot: getDraggingSnapshot(mode, draggingOver, combineWith, null)
-      }
-    };
-  });
-  var getSecondaryProps = memoizeOne(function (offset, combineTargetFor, shouldAnimateDisplacement) {
-    if (combineTargetFor === void 0) {
-      combineTargetFor = null;
-    }
-
-    return {
-      mapped: {
-        type: 'SECONDARY',
-        offset: offset,
-        combineTargetFor: combineTargetFor,
-        shouldAnimateDisplacement: shouldAnimateDisplacement,
-        snapshot: getSecondarySnapshot(combineTargetFor)
+        snapshot: getMemoizedSnapshot(mode, draggingOver, combineWith, null)
       }
     };
   });
 
-  var getSecondaryMovement = function getSecondaryMovement(ownId, draggingId, impact) {
-    var map = impact.movement.map;
-    var displacement = map[ownId];
-    var movement = impact.movement;
-    var merge = impact.merge;
-    var isCombinedWith = Boolean(merge && merge.combine.draggableId === ownId);
-    var displacedBy = movement.displacedBy.point;
-    var offset = memoizedOffset(displacedBy.x, displacedBy.y);
-
-    if (isCombinedWith) {
-      return getSecondaryProps(displacement ? offset : origin, draggingId, displacement ? displacement.shouldAnimate : true);
-    }
-
-    if (!displacement) {
-      return null;
-    }
-
-    if (!displacement.isVisible) {
-      return null;
-    }
-
-    return getSecondaryProps(offset, null, displacement.shouldAnimate);
-  };
-
-  var draggingSelector = function draggingSelector(state, ownProps) {
+  var selector = function selector(state, ownProps) {
     if (state.isDragging) {
       if (state.critical.draggable.id !== ownProps.draggableId) {
         return null;
@@ -8088,7 +8076,7 @@ var makeMapStateToProps$1 = function makeMapStateToProps() {
       var draggingOver = whatIsDraggedOver(state.impact);
       var combineWith = getCombineWithFromImpact(state.impact);
       var forceShouldAnimate = state.forceShouldAnimate;
-      return getDraggingProps(memoizedOffset(offset.x, offset.y), mode, dimension, draggingOver, combineWith, forceShouldAnimate);
+      return getMemoizedProps(memoizedOffset(offset.x, offset.y), mode, dimension, draggingOver, combineWith, forceShouldAnimate);
     }
 
     if (state.phase === 'DROP_ANIMATING') {
@@ -8124,7 +8112,7 @@ var makeMapStateToProps$1 = function makeMapStateToProps() {
           combineWith: _combineWith,
           mode: _mode,
           forceShouldAnimate: null,
-          snapshot: getDraggingSnapshot(_mode, _draggingOver, _combineWith, dropping)
+          snapshot: getMemoizedSnapshot(_mode, _draggingOver, _combineWith, dropping)
         }
       };
     }
@@ -8132,13 +8120,82 @@ var makeMapStateToProps$1 = function makeMapStateToProps() {
     return null;
   };
 
-  var secondarySelector = function secondarySelector(state, ownProps) {
+  return selector;
+}
+
+function getSecondarySnapshot(combineTargetFor) {
+  return {
+    isDragging: false,
+    isDropAnimating: false,
+    dropAnimation: null,
+    mode: null,
+    draggingOver: null,
+    combineTargetFor: combineTargetFor,
+    combineWith: null
+  };
+}
+
+function getSecondarySelector() {
+  var memoizedOffset = memoizeOne(function (x, y) {
+    return {
+      x: x,
+      y: y
+    };
+  });
+  var getMemoizedSnapshot = memoizeOne(getSecondarySnapshot);
+  var getMemoizedProps = memoizeOne(function (offset, combineTargetFor, shouldAnimateDisplacement) {
+    if (combineTargetFor === void 0) {
+      combineTargetFor = null;
+    }
+
+    return {
+      mapped: {
+        type: 'SECONDARY',
+        offset: offset,
+        combineTargetFor: combineTargetFor,
+        shouldAnimateDisplacement: shouldAnimateDisplacement,
+        snapshot: getMemoizedSnapshot(combineTargetFor)
+      }
+    };
+  });
+
+  var getFallback = function getFallback(combineTargetFor) {
+    return combineTargetFor ? getMemoizedProps(origin, combineTargetFor, true) : null;
+  };
+
+  var getProps = function getProps(ownId, draggingId, impact, afterCritical) {
+    var displacement = impact.displaced.visible[ownId];
+    var isAfterCriticalInVirtualList = Boolean(afterCritical.inVirtualList && afterCritical.effected[ownId]);
+    var combineTargetFor = tryGetCombine(impact) ? draggingId : null;
+
+    if (!displacement) {
+      if (!isAfterCriticalInVirtualList) {
+        return getFallback(combineTargetFor);
+      }
+
+      var change = negate(afterCritical.displacedBy.point);
+
+      var _offset = memoizedOffset(change.x, change.y);
+
+      return getMemoizedProps(_offset, combineTargetFor, true);
+    }
+
+    if (isAfterCriticalInVirtualList) {
+      return getFallback(combineTargetFor);
+    }
+
+    var displaceBy = impact.displacedBy.point;
+    var offset = memoizedOffset(displaceBy.x, displaceBy.y);
+    return getMemoizedProps(offset, combineTargetFor, displacement.shouldAnimate);
+  };
+
+  var selector = function selector(state, ownProps) {
     if (state.isDragging) {
       if (state.critical.draggable.id === ownProps.draggableId) {
         return null;
       }
 
-      return getSecondaryMovement(ownProps.draggableId, state.critical.draggable.id, state.impact);
+      return getProps(ownProps.draggableId, state.critical.draggable.id, state.impact, state.afterCritical);
     }
 
     if (state.phase === 'DROP_ANIMATING') {
@@ -8148,11 +8205,27 @@ var makeMapStateToProps$1 = function makeMapStateToProps() {
         return null;
       }
 
-      return getSecondaryMovement(ownProps.draggableId, completed.result.draggableId, completed.impact);
+      return getProps(ownProps.draggableId, completed.result.draggableId, completed.impact, completed.afterCritical);
     }
 
     return null;
   };
+
+  return selector;
+}
+
+var defaultMapProps = {
+  mapped: {
+    type: 'SECONDARY',
+    offset: origin,
+    combineTargetFor: null,
+    shouldAnimateDisplacement: true,
+    snapshot: getSecondarySnapshot(null)
+  }
+};
+var makeMapStateToProps = function makeMapStateToProps() {
+  var draggingSelector = getDraggableSelector();
+  var secondarySelector = getSecondarySelector();
 
   var selector = function selector(state, ownProps) {
     return draggingSelector(state, ownProps) || secondarySelector(state, ownProps) || defaultMapProps;
@@ -8160,27 +8233,306 @@ var makeMapStateToProps$1 = function makeMapStateToProps() {
 
   return selector;
 };
-var mapDispatchToProps$1 = {
-  lift: lift,
-  move: move,
-  moveUp: moveUp,
-  moveDown: moveDown,
-  moveLeft: moveLeft,
-  moveRight: moveRight,
-  moveByWindowScroll: moveByWindowScroll,
-  drop: drop,
+var mapDispatchToProps = {
   dropAnimationFinished: dropAnimationFinished
 };
-var defaultProps$1 = {
-  isDragDisabled: false,
-  disableInteractiveElementBlocking: false,
-  shouldRespectForcePress: false
-};
-var ConnectedDraggable = connect(makeMapStateToProps$1, mapDispatchToProps$1, null, {
+var ConnectedDraggable = connect(makeMapStateToProps, mapDispatchToProps, null, {
   context: StoreContext,
   pure: true,
   areStatePropsEqual: isStrictEqual
 })(Draggable);
-ConnectedDraggable.defaultProps = defaultProps$1;
 
-export { DragDropContext, ConnectedDraggable as Draggable, ConnectedDroppable as Droppable, resetServerContext };
+function PrivateDraggable(props) {
+  var droppableContext = useRequiredContext(DroppableContext);
+  var isUsingCloneFor = droppableContext.isUsingCloneFor;
+
+  if (isUsingCloneFor === props.draggableId && !props.isClone) {
+    return null;
+  }
+
+  return React.createElement(ConnectedDraggable, props);
+}
+function PublicDraggable(props) {
+  var isEnabled = typeof props.isDragDisabled === 'boolean' ? !props.isDragDisabled : true;
+  var canDragInteractiveElements = Boolean(props.disableInteractiveElementBlocking);
+  var shouldRespectForcePress = Boolean(props.shouldRespectForcePress);
+  return React.createElement(PrivateDraggable, _extends({}, props, {
+    isClone: false,
+    isEnabled: isEnabled,
+    canDragInteractiveElements: canDragInteractiveElements,
+    shouldRespectForcePress: shouldRespectForcePress
+  }));
+}
+
+function Droppable(props) {
+  var appContext = useContext(AppContext);
+  !appContext ? process.env.NODE_ENV !== "production" ? invariant(false, 'Could not find app context') : invariant(false) : void 0;
+  var contextId = appContext.contextId,
+      isMovementAllowed = appContext.isMovementAllowed;
+  var droppableRef = useRef(null);
+  var placeholderRef = useRef(null);
+  var children = props.children,
+      droppableId = props.droppableId,
+      type = props.type,
+      mode = props.mode,
+      direction = props.direction,
+      ignoreContainerClipping = props.ignoreContainerClipping,
+      isDropDisabled = props.isDropDisabled,
+      isCombineEnabled = props.isCombineEnabled,
+      snapshot = props.snapshot,
+      useClone = props.useClone,
+      updateViewportMaxScroll = props.updateViewportMaxScroll,
+      getContainerForClone = props.getContainerForClone;
+  var getDroppableRef = useCallback(function () {
+    return droppableRef.current;
+  }, []);
+  var getPlaceholderRef = useCallback(function () {
+    return placeholderRef.current;
+  }, []);
+  var setDroppableRef = useCallback(function (value) {
+    droppableRef.current = value;
+  }, []);
+  var setPlaceholderRef = useCallback(function (value) {
+    placeholderRef.current = value;
+  }, []);
+  var onPlaceholderTransitionEnd = useCallback(function () {
+    if (isMovementAllowed()) {
+      updateViewportMaxScroll({
+        maxScroll: getMaxWindowScroll()
+      });
+    }
+  }, [isMovementAllowed, updateViewportMaxScroll]);
+  useDroppablePublisher({
+    droppableId: droppableId,
+    type: type,
+    mode: mode,
+    direction: direction,
+    isDropDisabled: isDropDisabled,
+    isCombineEnabled: isCombineEnabled,
+    ignoreContainerClipping: ignoreContainerClipping,
+    getDroppableRef: getDroppableRef,
+    getPlaceholderRef: getPlaceholderRef
+  });
+  var placeholder = React.createElement(AnimateInOut, {
+    on: props.placeholder,
+    shouldAnimate: props.shouldAnimatePlaceholder
+  }, function (_ref) {
+    var onClose = _ref.onClose,
+        data = _ref.data,
+        animate = _ref.animate;
+    return React.createElement(Placeholder$1, {
+      placeholder: data,
+      onClose: onClose,
+      innerRef: setPlaceholderRef,
+      animate: animate,
+      contextId: contextId,
+      onTransitionEnd: onPlaceholderTransitionEnd
+    });
+  });
+  var provided = useMemo(function () {
+    return {
+      innerRef: setDroppableRef,
+      placeholder: placeholder,
+      droppableProps: {
+        'data-rbd-droppable-id': droppableId,
+        'data-rbd-droppable-context-id': contextId
+      }
+    };
+  }, [contextId, droppableId, placeholder, setDroppableRef]);
+  var isUsingCloneFor = useClone ? useClone.draggableId : null;
+  var droppableContext = useMemo(function () {
+    return {
+      droppableId: droppableId,
+      type: type,
+      isUsingCloneFor: isUsingCloneFor
+    };
+  }, [droppableId, isUsingCloneFor, type]);
+  useValidation({
+    props: props,
+    getDroppableRef: function getDroppableRef() {
+      return droppableRef.current;
+    },
+    getPlaceholderRef: function getPlaceholderRef() {
+      return placeholderRef.current;
+    }
+  });
+
+  function getClone() {
+    if (!useClone) {
+      return null;
+    }
+
+    var draggableId = useClone.draggableId,
+        source = useClone.source,
+        render = useClone.render;
+    var node = React.createElement(PrivateDraggable, {
+      draggableId: draggableId,
+      index: source.index,
+      isClone: true,
+      isEnabled: true,
+      shouldRespectForcePress: false,
+      canDragInteractiveElements: true
+    }, function (draggableProvided, draggableSnapshot) {
+      return render(draggableProvided, draggableSnapshot, source);
+    });
+    return ReactDOM.createPortal(node, getContainerForClone());
+  }
+
+  return React.createElement(DroppableContext.Provider, {
+    value: droppableContext
+  }, children(provided, snapshot), getClone());
+}
+
+var isMatchingType = function isMatchingType(type, critical) {
+  return type === critical.droppable.type;
+};
+
+var getDraggable = function getDraggable(critical, dimensions) {
+  return dimensions.draggables[critical.draggable.id];
+};
+
+var makeMapStateToProps$1 = function makeMapStateToProps() {
+  var idle = {
+    placeholder: null,
+    shouldAnimatePlaceholder: true,
+    snapshot: {
+      isDraggingOver: false,
+      draggingOverWith: null,
+      draggingFromThisWith: null
+    },
+    useClone: null
+  };
+
+  var idleWithoutAnimation = _extends({}, idle, {
+    shouldAnimatePlaceholder: false
+  });
+
+  var getMapProps = memoizeOne(function (id, isDraggingOver, dragging, snapshot, whenDraggingClone) {
+    var isHome = dragging.descriptor.droppableId === id;
+
+    if (isHome) {
+      var useClone = whenDraggingClone ? {
+        render: whenDraggingClone,
+        draggableId: dragging.descriptor.id,
+        source: getHomeLocation(dragging.descriptor)
+      } : null;
+      return {
+        placeholder: dragging.placeholder,
+        shouldAnimatePlaceholder: false,
+        snapshot: snapshot,
+        useClone: useClone
+      };
+    }
+
+    if (!isDraggingOver) {
+      return idle;
+    }
+
+    return {
+      placeholder: dragging.placeholder,
+      shouldAnimatePlaceholder: true,
+      snapshot: snapshot,
+      useClone: null
+    };
+  });
+  var getSnapshot = memoizeOne(function (id, isDraggingOver, dragging) {
+    var draggableId = dragging.descriptor.id;
+    var isHome = dragging.descriptor.droppableId === id;
+    var draggingOverWith = isDraggingOver ? draggableId : null;
+    var draggingFromThisWith = isHome ? draggableId : null;
+    return {
+      isDraggingOver: isDraggingOver,
+      draggingOverWith: draggingOverWith,
+      draggingFromThisWith: draggingFromThisWith
+    };
+  });
+
+  var selector = function selector(state, ownProps) {
+    var id = ownProps.droppableId;
+    var type = ownProps.type;
+    var whenDraggingClone = ownProps.whenDraggingClone;
+
+    if (state.isDragging) {
+      var critical = state.critical;
+
+      if (!isMatchingType(type, critical)) {
+        return idle;
+      }
+
+      var dragging = getDraggable(critical, state.dimensions);
+      var isDraggingOver = whatIsDraggedOver(state.impact) === id;
+      var snapshot = getSnapshot(id, isDraggingOver, dragging);
+      return getMapProps(id, isDraggingOver, dragging, snapshot, whenDraggingClone);
+    }
+
+    if (state.phase === 'DROP_ANIMATING') {
+      var completed = state.completed;
+
+      if (!isMatchingType(type, completed.critical)) {
+        return idle;
+      }
+
+      var _dragging = getDraggable(completed.critical, state.dimensions);
+
+      var _snapshot = getSnapshot(id, whatIsDraggedOverFromResult(completed.result) === id, _dragging);
+
+      return getMapProps(id, whatIsDraggedOver(completed.impact) === id, _dragging, _snapshot, whenDraggingClone);
+    }
+
+    if (state.phase === 'IDLE' && !state.completed && state.shouldFlush) {
+      return idleWithoutAnimation;
+    }
+
+    if (state.phase === 'IDLE' && state.completed) {
+      var _completed = state.completed;
+
+      if (!isMatchingType(type, _completed.critical)) {
+        return idle;
+      }
+
+      var wasOver = whatIsDraggedOver(_completed.impact) === id;
+      var wasCombining = Boolean(_completed.impact.at && _completed.impact.at.type === 'COMBINE');
+
+      if (state.shouldFlush) {
+        return idleWithoutAnimation;
+      }
+
+      if (wasOver) {
+        return wasCombining ? idle : idleWithoutAnimation;
+      }
+
+      return idle;
+    }
+
+    return idle;
+  };
+
+  return selector;
+};
+var mapDispatchToProps$1 = {
+  updateViewportMaxScroll: updateViewportMaxScroll
+};
+
+function getBody() {
+  !document.body ? process.env.NODE_ENV !== "production" ? invariant(false, 'document.body is not ready') : invariant(false) : void 0;
+  return document.body;
+}
+
+var defaultProps = {
+  mode: 'STANDARD',
+  type: 'DEFAULT',
+  direction: 'vertical',
+  isDropDisabled: false,
+  isCombineEnabled: false,
+  ignoreContainerClipping: false,
+  whenDraggingClone: null,
+  getContainerForClone: getBody
+};
+var ConnectedDroppable = connect(makeMapStateToProps$1, mapDispatchToProps$1, null, {
+  context: StoreContext,
+  pure: true,
+  areStatePropsEqual: isStrictEqual
+})(Droppable);
+ConnectedDroppable.defaultProps = defaultProps;
+
+export { DragDropContext, PublicDraggable as Draggable, ConnectedDroppable as Droppable, resetServerContext };

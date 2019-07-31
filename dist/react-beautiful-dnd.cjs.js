@@ -20,6 +20,9 @@ var rafSchd = _interopDefault(require('raf-schd'));
 var _Date$now = _interopDefault(require('@babel/runtime-corejs2/core-js/date/now'));
 var _Object$assign = _interopDefault(require('@babel/runtime-corejs2/core-js/object/assign'));
 var ReactDOM = _interopDefault(require('react-dom'));
+var recompose = require('recompose');
+require('deep-diff');
+require('deep-equal');
 var _Number$isInteger = _interopDefault(require('@babel/runtime-corejs2/core-js/number/is-integer'));
 
 var isProduction = process.env.NODE_ENV === 'production';
@@ -6990,9 +6993,10 @@ function App(props) {
       canLift: getCanLift,
       isMovementAllowed: getIsMovementAllowed,
       liftInstructionId: liftInstructionId,
-      registry: registry
+      registry: registry,
+      lazyDispatch: lazyDispatch
     };
-  }, [contextId, dimensionMarshal, focusMarshal, getCanLift, getIsMovementAllowed, liftInstructionId, registry]);
+  }, [contextId, dimensionMarshal, focusMarshal, getCanLift, getIsMovementAllowed, liftInstructionId, registry, lazyDispatch]);
   var notifyScrollToWindow = useMemoOne.useCallback(function () {
     var current = getStore(lazyStoreRef);
 
@@ -7928,7 +7932,7 @@ function preventHtml5Dnd(event) {
   event.preventDefault();
 }
 
-function Draggable(props) {
+var Draggable = function Draggable(props) {
   var ref = React.useRef(null);
   var setRef = useMemoOne.useCallback(function (el) {
     ref.current = el;
@@ -7939,9 +7943,11 @@ function Draggable(props) {
 
   var _useRequiredContext = useRequiredContext(AppContext),
       contextId = _useRequiredContext.contextId,
-      liftInstructionId = _useRequiredContext.liftInstructionId;
+      liftInstructionId = _useRequiredContext.liftInstructionId,
+      lazyDispatch = _useRequiredContext.lazyDispatch;
 
   var children = props.children,
+      ChildComponent = props.childComponent,
       draggableId = props.draggableId,
       isEnabled = props.isEnabled,
       shouldRespectForcePress = props.shouldRespectForcePress,
@@ -7990,8 +7996,8 @@ function Draggable(props) {
       return;
     }
 
-    dropAnimationFinishedAction();
-  }, [dropAnimationFinishedAction, mapped]);
+    lazyDispatch(dropAnimationFinishedAction());
+  }, [dropAnimationFinishedAction, lazyDispatch, mapped]);
   var provided = useMemoOne.useMemo(function () {
     var style = getStyle$1(mapped);
     var onTransitionEnd = mapped.type === 'DRAGGING' && mapped.dropping ? onMoveEnd : null;
@@ -8007,8 +8013,18 @@ function Draggable(props) {
     };
     return result;
   }, [contextId, dragHandleProps, draggableId, mapped, onMoveEnd, setRef]);
-  return children(provided, mapped.snapshot);
-}
+
+  if (ChildComponent) {
+    return React__default.createElement(ChildComponent, _extends({
+      provided: provided,
+      snapshot: mapped.snapshot
+    }, props));
+  } else {
+    return children(provided, mapped.snapshot);
+  }
+};
+
+var Draggable$1 = recompose.pure(Draggable);
 
 var isStrictEqual = (function (a, b) {
   return a === b;
@@ -8240,36 +8256,56 @@ var makeMapStateToProps = function makeMapStateToProps() {
 
   return selector;
 };
-var mapDispatchToProps = {
-  dropAnimationFinished: dropAnimationFinished
+
+var mapDispatchToProps = function mapDispatchToProps() {
+  return {
+    dropAnimationFinished: dropAnimationFinished
+  };
 };
+
 var ConnectedDraggable = reactRedux.connect(makeMapStateToProps, mapDispatchToProps, null, {
   context: StoreContext,
   pure: true,
   areStatePropsEqual: isStrictEqual
-})(Draggable);
+})(Draggable$1);
 
-function PrivateDraggable(props) {
+var ImpurePrivateDraggable = function ImpurePrivateDraggable(props) {
   var droppableContext = useRequiredContext(DroppableContext);
   var isUsingCloneFor = droppableContext.isUsingCloneFor;
+  return React.useMemo(function () {
+    if (isUsingCloneFor === props.draggableId && !props.isClone) {
+      return null;
+    }
 
-  if (isUsingCloneFor === props.draggableId && !props.isClone) {
-    return null;
+    return React__default.createElement(ConnectedDraggable, props);
+  }, [isUsingCloneFor]);
+};
+
+var PrivateDraggable = recompose.pure(ImpurePrivateDraggable);
+var PublicDraggable = function (_React$PureComponent) {
+  _inheritsLoose(PublicDraggable, _React$PureComponent);
+
+  function PublicDraggable() {
+    return _React$PureComponent.apply(this, arguments) || this;
   }
 
-  return React__default.createElement(ConnectedDraggable, props);
-}
-function PublicDraggable(props) {
-  var isEnabled = typeof props.isDragDisabled === 'boolean' ? !props.isDragDisabled : true;
-  var canDragInteractiveElements = Boolean(props.disableInteractiveElementBlocking);
-  var shouldRespectForcePress = Boolean(props.shouldRespectForcePress);
-  return React__default.createElement(PrivateDraggable, _extends({}, props, {
-    isClone: false,
-    isEnabled: isEnabled,
-    canDragInteractiveElements: canDragInteractiveElements,
-    shouldRespectForcePress: shouldRespectForcePress
-  }));
-}
+  var _proto = PublicDraggable.prototype;
+
+  _proto.render = function render() {
+    var props = this.props;
+    var isEnabled = typeof props.isDragDisabled === 'boolean' ? !props.isDragDisabled : true;
+    var canDragInteractiveElements = Boolean(props.disableInteractiveElementBlocking);
+    var shouldRespectForcePress = Boolean(props.shouldRespectForcePress);
+    return React__default.createElement(ConnectedDraggable, _extends({}, props, {
+      isClone: false,
+      isEnabled: isEnabled,
+      canDragInteractiveElements: canDragInteractiveElements,
+      shouldRespectForcePress: shouldRespectForcePress
+    }));
+  };
+
+  return PublicDraggable;
+}(React__default.PureComponent);
 
 function Droppable(props) {
   var appContext = React.useContext(AppContext);

@@ -7,6 +7,8 @@
 	var React__default = 'default' in React ? React['default'] : React;
 	var ReactDOM__default = 'default' in ReactDOM ? ReactDOM['default'] : ReactDOM;
 
+	var commonjsGlobal = typeof globalThis !== 'undefined' ? globalThis : typeof window !== 'undefined' ? window : typeof global !== 'undefined' ? global : typeof self !== 'undefined' ? self : {};
+
 	function unwrapExports (x) {
 		return x && x.__esModule && Object.prototype.hasOwnProperty.call(x, 'default') ? x['default'] : x;
 	}
@@ -10533,9 +10535,10 @@
 	      canLift: getCanLift,
 	      isMovementAllowed: getIsMovementAllowed,
 	      liftInstructionId: liftInstructionId,
-	      registry: registry
+	      registry: registry,
+	      lazyDispatch: lazyDispatch
 	    };
-	  }, [contextId, dimensionMarshal, focusMarshal, getCanLift, getIsMovementAllowed, liftInstructionId, registry]);
+	  }, [contextId, dimensionMarshal, focusMarshal, getCanLift, getIsMovementAllowed, liftInstructionId, registry, lazyDispatch]);
 	  var notifyScrollToWindow = useCallback(function () {
 	    var current = getStore(lazyStoreRef);
 
@@ -11279,6 +11282,847 @@
 	  return AnimateInOut;
 	}(React__default.PureComponent);
 
+	/**
+	 * Copyright (c) 2013-present, Facebook, Inc.
+	 *
+	 * This source code is licensed under the MIT license found in the
+	 * LICENSE file in the root directory of this source tree.
+	 *
+	 * @typechecks
+	 * 
+	 */
+
+	var hasOwnProperty$2 = Object.prototype.hasOwnProperty;
+
+	/**
+	 * inlined Object.is polyfill to avoid requiring consumers ship their own
+	 * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/is
+	 */
+	function is$2(x, y) {
+	  // SameValue algorithm
+	  if (x === y) {
+	    // Steps 1-5, 7-10
+	    // Steps 6.b-6.e: +0 != -0
+	    // Added the nonzero y check to make Flow happy, but it is redundant
+	    return x !== 0 || y !== 0 || 1 / x === 1 / y;
+	  } else {
+	    // Step 6.a: NaN == NaN
+	    return x !== x && y !== y;
+	  }
+	}
+
+	/**
+	 * Performs equality by iterating through keys on an object and returning false
+	 * when any key has values which are not strictly equal between the arguments.
+	 * Returns true when the values of all keys are strictly equal.
+	 */
+	function shallowEqual$1(objA, objB) {
+	  if (is$2(objA, objB)) {
+	    return true;
+	  }
+
+	  if (typeof objA !== 'object' || objA === null || typeof objB !== 'object' || objB === null) {
+	    return false;
+	  }
+
+	  var keysA = Object.keys(objA);
+	  var keysB = Object.keys(objB);
+
+	  if (keysA.length !== keysB.length) {
+	    return false;
+	  }
+
+	  // Test for A's keys different from B.
+	  for (var i = 0; i < keysA.length; i++) {
+	    if (!hasOwnProperty$2.call(objB, keysA[i]) || !is$2(objA[keysA[i]], objB[keysA[i]])) {
+	      return false;
+	    }
+	  }
+
+	  return true;
+	}
+
+	var shallowEqual_1 = shallowEqual$1;
+
+	var lib = createCommonjsModule(function (module, exports) {
+
+	Object.defineProperty(exports, "__esModule", {
+	  value: true
+	});
+	var createChangeEmitter = exports.createChangeEmitter = function createChangeEmitter() {
+	  var currentListeners = [];
+	  var nextListeners = currentListeners;
+
+	  function ensureCanMutateNextListeners() {
+	    if (nextListeners === currentListeners) {
+	      nextListeners = currentListeners.slice();
+	    }
+	  }
+
+	  function listen(listener) {
+	    if (typeof listener !== 'function') {
+	      throw new Error('Expected listener to be a function.');
+	    }
+
+	    var isSubscribed = true;
+
+	    ensureCanMutateNextListeners();
+	    nextListeners.push(listener);
+
+	    return function () {
+	      if (!isSubscribed) {
+	        return;
+	      }
+
+	      isSubscribed = false;
+
+	      ensureCanMutateNextListeners();
+	      var index = nextListeners.indexOf(listener);
+	      nextListeners.splice(index, 1);
+	    };
+	  }
+
+	  function emit() {
+	    currentListeners = nextListeners;
+	    var listeners = currentListeners;
+	    for (var i = 0; i < listeners.length; i++) {
+	      listeners[i].apply(listeners, arguments);
+	    }
+	  }
+
+	  return {
+	    listen: listen,
+	    emit: emit
+	  };
+	};
+	});
+
+	unwrapExports(lib);
+	var lib_1 = lib.createChangeEmitter;
+
+	var setStatic = function setStatic(key, value) {
+	  return function (BaseComponent) {
+	    /* eslint-disable no-param-reassign */
+	    BaseComponent[key] = value;
+	    /* eslint-enable no-param-reassign */
+
+	    return BaseComponent;
+	  };
+	};
+
+	var setDisplayName = function setDisplayName(displayName) {
+	  return setStatic('displayName', displayName);
+	};
+
+	var getDisplayName = function getDisplayName(Component$$1) {
+	  if (typeof Component$$1 === 'string') {
+	    return Component$$1;
+	  }
+
+	  if (!Component$$1) {
+	    return undefined;
+	  }
+
+	  return Component$$1.displayName || Component$$1.name || 'Component';
+	};
+
+	var wrapDisplayName = function wrapDisplayName(BaseComponent, hocName) {
+	  return hocName + "(" + getDisplayName(BaseComponent) + ")";
+	};
+
+	var shouldUpdate = function shouldUpdate(test) {
+	  return function (BaseComponent) {
+	    var factory = React.createFactory(BaseComponent);
+
+	    var ShouldUpdate =
+	    /*#__PURE__*/
+	    function (_Component) {
+	      _inheritsLoose$1(ShouldUpdate, _Component);
+
+	      function ShouldUpdate() {
+	        return _Component.apply(this, arguments) || this;
+	      }
+
+	      var _proto = ShouldUpdate.prototype;
+
+	      _proto.shouldComponentUpdate = function shouldComponentUpdate(nextProps) {
+	        return test(this.props, nextProps);
+	      };
+
+	      _proto.render = function render() {
+	        return factory(this.props);
+	      };
+
+	      return ShouldUpdate;
+	    }(React.Component);
+
+	    {
+	      return setDisplayName(wrapDisplayName(BaseComponent, 'shouldUpdate'))(ShouldUpdate);
+	    }
+
+	    return ShouldUpdate;
+	  };
+	};
+
+	var pure = function pure(BaseComponent) {
+	  var hoc = shouldUpdate(function (props, nextProps) {
+	    return !shallowEqual_1(props, nextProps);
+	  });
+
+	  {
+	    return setDisplayName(wrapDisplayName(BaseComponent, 'pure'))(hoc(BaseComponent));
+	  }
+
+	  return hoc(BaseComponent);
+	};
+
+	var deepDiff = createCommonjsModule(function (module, exports) {
+	(function(root, factory) { // eslint-disable-line no-extra-semi
+	  var deepDiff = factory(root);
+	  // eslint-disable-next-line no-undef
+	  {
+	      // Node.js or ReactNative
+	      module.exports = deepDiff;
+	  }
+	}(commonjsGlobal, function(root) {
+	  var validKinds = ['N', 'E', 'A', 'D'];
+
+	  // nodejs compatible on server side and in the browser.
+	  function inherits(ctor, superCtor) {
+	    ctor.super_ = superCtor;
+	    ctor.prototype = Object.create(superCtor.prototype, {
+	      constructor: {
+	        value: ctor,
+	        enumerable: false,
+	        writable: true,
+	        configurable: true
+	      }
+	    });
+	  }
+
+	  function Diff(kind, path) {
+	    Object.defineProperty(this, 'kind', {
+	      value: kind,
+	      enumerable: true
+	    });
+	    if (path && path.length) {
+	      Object.defineProperty(this, 'path', {
+	        value: path,
+	        enumerable: true
+	      });
+	    }
+	  }
+
+	  function DiffEdit(path, origin, value) {
+	    DiffEdit.super_.call(this, 'E', path);
+	    Object.defineProperty(this, 'lhs', {
+	      value: origin,
+	      enumerable: true
+	    });
+	    Object.defineProperty(this, 'rhs', {
+	      value: value,
+	      enumerable: true
+	    });
+	  }
+	  inherits(DiffEdit, Diff);
+
+	  function DiffNew(path, value) {
+	    DiffNew.super_.call(this, 'N', path);
+	    Object.defineProperty(this, 'rhs', {
+	      value: value,
+	      enumerable: true
+	    });
+	  }
+	  inherits(DiffNew, Diff);
+
+	  function DiffDeleted(path, value) {
+	    DiffDeleted.super_.call(this, 'D', path);
+	    Object.defineProperty(this, 'lhs', {
+	      value: value,
+	      enumerable: true
+	    });
+	  }
+	  inherits(DiffDeleted, Diff);
+
+	  function DiffArray(path, index, item) {
+	    DiffArray.super_.call(this, 'A', path);
+	    Object.defineProperty(this, 'index', {
+	      value: index,
+	      enumerable: true
+	    });
+	    Object.defineProperty(this, 'item', {
+	      value: item,
+	      enumerable: true
+	    });
+	  }
+	  inherits(DiffArray, Diff);
+
+	  function arrayRemove(arr, from, to) {
+	    var rest = arr.slice((to || from) + 1 || arr.length);
+	    arr.length = from < 0 ? arr.length + from : from;
+	    arr.push.apply(arr, rest);
+	    return arr;
+	  }
+
+	  function realTypeOf(subject) {
+	    var type = typeof subject;
+	    if (type !== 'object') {
+	      return type;
+	    }
+
+	    if (subject === Math) {
+	      return 'math';
+	    } else if (subject === null) {
+	      return 'null';
+	    } else if (Array.isArray(subject)) {
+	      return 'array';
+	    } else if (Object.prototype.toString.call(subject) === '[object Date]') {
+	      return 'date';
+	    } else if (typeof subject.toString === 'function' && /^\/.*\//.test(subject.toString())) {
+	      return 'regexp';
+	    }
+	    return 'object';
+	  }
+
+	  // http://werxltd.com/wp/2010/05/13/javascript-implementation-of-javas-string-hashcode-method/
+	  function hashThisString(string) {
+	    var hash = 0;
+	    if (string.length === 0) { return hash; }
+	    for (var i = 0; i < string.length; i++) {
+	      var char = string.charCodeAt(i);
+	      hash = ((hash << 5) - hash) + char;
+	      hash = hash & hash; // Convert to 32bit integer
+	    }
+	    return hash;
+	  }
+
+	  // Gets a hash of the given object in an array order-independent fashion
+	  // also object key order independent (easier since they can be alphabetized)
+	  function getOrderIndependentHash(object) {
+	    var accum = 0;
+	    var type = realTypeOf(object);
+
+	    if (type === 'array') {
+	      object.forEach(function (item) {
+	        // Addition is commutative so this is order indep
+	        accum += getOrderIndependentHash(item);
+	      });
+
+	      var arrayString = '[type: array, hash: ' + accum + ']';
+	      return accum + hashThisString(arrayString);
+	    }
+
+	    if (type === 'object') {
+	      for (var key in object) {
+	        if (object.hasOwnProperty(key)) {
+	          var keyValueString = '[ type: object, key: ' + key + ', value hash: ' + getOrderIndependentHash(object[key]) + ']';
+	          accum += hashThisString(keyValueString);
+	        }
+	      }
+
+	      return accum;
+	    }
+
+	    // Non object, non array...should be good?
+	    var stringToHash = '[ type: ' + type + ' ; value: ' + object + ']';
+	    return accum + hashThisString(stringToHash);
+	  }
+
+	  function deepDiff(lhs, rhs, changes, prefilter, path, key, stack, orderIndependent) {
+	    changes = changes || [];
+	    path = path || [];
+	    stack = stack || [];
+	    var currentPath = path.slice(0);
+	    if (typeof key !== 'undefined' && key !== null) {
+	      if (prefilter) {
+	        if (typeof (prefilter) === 'function' && prefilter(currentPath, key)) {
+	          return;
+	        } else if (typeof (prefilter) === 'object') {
+	          if (prefilter.prefilter && prefilter.prefilter(currentPath, key)) {
+	            return;
+	          }
+	          if (prefilter.normalize) {
+	            var alt = prefilter.normalize(currentPath, key, lhs, rhs);
+	            if (alt) {
+	              lhs = alt[0];
+	              rhs = alt[1];
+	            }
+	          }
+	        }
+	      }
+	      currentPath.push(key);
+	    }
+
+	    // Use string comparison for regexes
+	    if (realTypeOf(lhs) === 'regexp' && realTypeOf(rhs) === 'regexp') {
+	      lhs = lhs.toString();
+	      rhs = rhs.toString();
+	    }
+
+	    var ltype = typeof lhs;
+	    var rtype = typeof rhs;
+	    var i, j, k, other;
+
+	    var ldefined = ltype !== 'undefined' ||
+	      (stack && (stack.length > 0) && stack[stack.length - 1].lhs &&
+	        Object.getOwnPropertyDescriptor(stack[stack.length - 1].lhs, key));
+	    var rdefined = rtype !== 'undefined' ||
+	      (stack && (stack.length > 0) && stack[stack.length - 1].rhs &&
+	        Object.getOwnPropertyDescriptor(stack[stack.length - 1].rhs, key));
+
+	    if (!ldefined && rdefined) {
+	      changes.push(new DiffNew(currentPath, rhs));
+	    } else if (!rdefined && ldefined) {
+	      changes.push(new DiffDeleted(currentPath, lhs));
+	    } else if (realTypeOf(lhs) !== realTypeOf(rhs)) {
+	      changes.push(new DiffEdit(currentPath, lhs, rhs));
+	    } else if (realTypeOf(lhs) === 'date' && (lhs - rhs) !== 0) {
+	      changes.push(new DiffEdit(currentPath, lhs, rhs));
+	    } else if (ltype === 'object' && lhs !== null && rhs !== null) {
+	      for (i = stack.length - 1; i > -1; --i) {
+	        if (stack[i].lhs === lhs) {
+	          other = true;
+	          break;
+	        }
+	      }
+	      if (!other) {
+	        stack.push({ lhs: lhs, rhs: rhs });
+	        if (Array.isArray(lhs)) {
+	          // If order doesn't matter, we need to sort our arrays
+	          if (orderIndependent) {
+	            lhs.sort(function (a, b) {
+	              return getOrderIndependentHash(a) - getOrderIndependentHash(b);
+	            });
+
+	            rhs.sort(function (a, b) {
+	              return getOrderIndependentHash(a) - getOrderIndependentHash(b);
+	            });
+	          }
+	          i = rhs.length - 1;
+	          j = lhs.length - 1;
+	          while (i > j) {
+	            changes.push(new DiffArray(currentPath, i, new DiffNew(undefined, rhs[i--])));
+	          }
+	          while (j > i) {
+	            changes.push(new DiffArray(currentPath, j, new DiffDeleted(undefined, lhs[j--])));
+	          }
+	          for (; i >= 0; --i) {
+	            deepDiff(lhs[i], rhs[i], changes, prefilter, currentPath, i, stack, orderIndependent);
+	          }
+	        } else {
+	          var akeys = Object.keys(lhs);
+	          var pkeys = Object.keys(rhs);
+	          for (i = 0; i < akeys.length; ++i) {
+	            k = akeys[i];
+	            other = pkeys.indexOf(k);
+	            if (other >= 0) {
+	              deepDiff(lhs[k], rhs[k], changes, prefilter, currentPath, k, stack, orderIndependent);
+	              pkeys[other] = null;
+	            } else {
+	              deepDiff(lhs[k], undefined, changes, prefilter, currentPath, k, stack, orderIndependent);
+	            }
+	          }
+	          for (i = 0; i < pkeys.length; ++i) {
+	            k = pkeys[i];
+	            if (k) {
+	              deepDiff(undefined, rhs[k], changes, prefilter, currentPath, k, stack, orderIndependent);
+	            }
+	          }
+	        }
+	        stack.length = stack.length - 1;
+	      } else if (lhs !== rhs) {
+	        // lhs is contains a cycle at this element and it differs from rhs
+	        changes.push(new DiffEdit(currentPath, lhs, rhs));
+	      }
+	    } else if (lhs !== rhs) {
+	      if (!(ltype === 'number' && isNaN(lhs) && isNaN(rhs))) {
+	        changes.push(new DiffEdit(currentPath, lhs, rhs));
+	      }
+	    }
+	  }
+
+	  function observableDiff(lhs, rhs, observer, prefilter, orderIndependent) {
+	    var changes = [];
+	    deepDiff(lhs, rhs, changes, prefilter, null, null, null, orderIndependent);
+	    if (observer) {
+	      for (var i = 0; i < changes.length; ++i) {
+	        observer(changes[i]);
+	      }
+	    }
+	    return changes;
+	  }
+
+	  function orderIndependentDeepDiff(lhs, rhs, changes, prefilter, path, key, stack) {
+	    return deepDiff(lhs, rhs, changes, prefilter, path, key, stack, true);
+	  }
+
+	  function accumulateDiff(lhs, rhs, prefilter, accum) {
+	    var observer = (accum) ?
+	      function (difference) {
+	        if (difference) {
+	          accum.push(difference);
+	        }
+	      } : undefined;
+	    var changes = observableDiff(lhs, rhs, observer, prefilter);
+	    return (accum) ? accum : (changes.length) ? changes : undefined;
+	  }
+
+	  function accumulateOrderIndependentDiff(lhs, rhs, prefilter, accum) {
+	    var observer = (accum) ?
+	      function (difference) {
+	        if (difference) {
+	          accum.push(difference);
+	        }
+	      } : undefined;
+	    var changes = observableDiff(lhs, rhs, observer, prefilter, true);
+	    return (accum) ? accum : (changes.length) ? changes : undefined;
+	  }
+
+	  function applyArrayChange(arr, index, change) {
+	    if (change.path && change.path.length) {
+	      var it = arr[index],
+	        i, u = change.path.length - 1;
+	      for (i = 0; i < u; i++) {
+	        it = it[change.path[i]];
+	      }
+	      switch (change.kind) {
+	        case 'A':
+	          applyArrayChange(it[change.path[i]], change.index, change.item);
+	          break;
+	        case 'D':
+	          delete it[change.path[i]];
+	          break;
+	        case 'E':
+	        case 'N':
+	          it[change.path[i]] = change.rhs;
+	          break;
+	      }
+	    } else {
+	      switch (change.kind) {
+	        case 'A':
+	          applyArrayChange(arr[index], change.index, change.item);
+	          break;
+	        case 'D':
+	          arr = arrayRemove(arr, index);
+	          break;
+	        case 'E':
+	        case 'N':
+	          arr[index] = change.rhs;
+	          break;
+	      }
+	    }
+	    return arr;
+	  }
+
+	  function applyChange(target, source, change) {
+	    if (typeof change === 'undefined' && source && ~validKinds.indexOf(source.kind)) {
+	      change = source;
+	    }
+	    if (target && change && change.kind) {
+	      var it = target,
+	        i = -1,
+	        last = change.path ? change.path.length - 1 : 0;
+	      while (++i < last) {
+	        if (typeof it[change.path[i]] === 'undefined') {
+	          it[change.path[i]] = (typeof change.path[i + 1] !== 'undefined' && typeof change.path[i + 1] === 'number') ? [] : {};
+	        }
+	        it = it[change.path[i]];
+	      }
+	      switch (change.kind) {
+	        case 'A':
+	          if (change.path && typeof it[change.path[i]] === 'undefined') {
+	            it[change.path[i]] = [];
+	          }
+	          applyArrayChange(change.path ? it[change.path[i]] : it, change.index, change.item);
+	          break;
+	        case 'D':
+	          delete it[change.path[i]];
+	          break;
+	        case 'E':
+	        case 'N':
+	          it[change.path[i]] = change.rhs;
+	          break;
+	      }
+	    }
+	  }
+
+	  function revertArrayChange(arr, index, change) {
+	    if (change.path && change.path.length) {
+	      // the structure of the object at the index has changed...
+	      var it = arr[index],
+	        i, u = change.path.length - 1;
+	      for (i = 0; i < u; i++) {
+	        it = it[change.path[i]];
+	      }
+	      switch (change.kind) {
+	        case 'A':
+	          revertArrayChange(it[change.path[i]], change.index, change.item);
+	          break;
+	        case 'D':
+	          it[change.path[i]] = change.lhs;
+	          break;
+	        case 'E':
+	          it[change.path[i]] = change.lhs;
+	          break;
+	        case 'N':
+	          delete it[change.path[i]];
+	          break;
+	      }
+	    } else {
+	      // the array item is different...
+	      switch (change.kind) {
+	        case 'A':
+	          revertArrayChange(arr[index], change.index, change.item);
+	          break;
+	        case 'D':
+	          arr[index] = change.lhs;
+	          break;
+	        case 'E':
+	          arr[index] = change.lhs;
+	          break;
+	        case 'N':
+	          arr = arrayRemove(arr, index);
+	          break;
+	      }
+	    }
+	    return arr;
+	  }
+
+	  function revertChange(target, source, change) {
+	    if (target && source && change && change.kind) {
+	      var it = target,
+	        i, u;
+	      u = change.path.length - 1;
+	      for (i = 0; i < u; i++) {
+	        if (typeof it[change.path[i]] === 'undefined') {
+	          it[change.path[i]] = {};
+	        }
+	        it = it[change.path[i]];
+	      }
+	      switch (change.kind) {
+	        case 'A':
+	          // Array was modified...
+	          // it will be an array...
+	          revertArrayChange(it[change.path[i]], change.index, change.item);
+	          break;
+	        case 'D':
+	          // Item was deleted...
+	          it[change.path[i]] = change.lhs;
+	          break;
+	        case 'E':
+	          // Item was edited...
+	          it[change.path[i]] = change.lhs;
+	          break;
+	        case 'N':
+	          // Item is new...
+	          delete it[change.path[i]];
+	          break;
+	      }
+	    }
+	  }
+
+	  function applyDiff(target, source, filter) {
+	    if (target && source) {
+	      var onChange = function (change) {
+	        if (!filter || filter(target, source, change)) {
+	          applyChange(target, source, change);
+	        }
+	      };
+	      observableDiff(target, source, onChange);
+	    }
+	  }
+
+	  Object.defineProperties(accumulateDiff, {
+
+	    diff: {
+	      value: accumulateDiff,
+	      enumerable: true
+	    },
+	    orderIndependentDiff: {
+	      value: accumulateOrderIndependentDiff,
+	      enumerable: true
+	    },
+	    observableDiff: {
+	      value: observableDiff,
+	      enumerable: true
+	    },
+	    orderIndependentObservableDiff: {
+	      value: orderIndependentDeepDiff,
+	      enumerable: true
+	    },
+	    orderIndepHash: {
+	      value: getOrderIndependentHash,
+	      enumerable: true
+	    },
+	    applyDiff: {
+	      value: applyDiff,
+	      enumerable: true
+	    },
+	    applyChange: {
+	      value: applyChange,
+	      enumerable: true
+	    },
+	    revertChange: {
+	      value: revertChange,
+	      enumerable: true
+	    },
+	    isConflict: {
+	      value: function () {
+	        return typeof $conflict !== 'undefined';
+	      },
+	      enumerable: true
+	    }
+	  });
+
+	  // hackish...
+	  accumulateDiff.DeepDiff = accumulateDiff;
+	  // ...but works with:
+	  // import DeepDiff from 'deep-diff'
+	  // import { DeepDiff } from 'deep-diff'
+	  // const DeepDiff = require('deep-diff');
+	  // const { DeepDiff } = require('deep-diff');
+
+	  if (root) {
+	    root.DeepDiff = accumulateDiff;
+	  }
+
+	  return accumulateDiff;
+	}));
+	});
+
+	var keys$2 = createCommonjsModule(function (module, exports) {
+	exports = module.exports = typeof Object.keys === 'function'
+	  ? Object.keys : shim;
+
+	exports.shim = shim;
+	function shim (obj) {
+	  var keys = [];
+	  for (var key in obj) keys.push(key);
+	  return keys;
+	}
+	});
+	var keys_1 = keys$2.shim;
+
+	var is_arguments = createCommonjsModule(function (module, exports) {
+	var supportsArgumentsClass = (function(){
+	  return Object.prototype.toString.call(arguments)
+	})() == '[object Arguments]';
+
+	exports = module.exports = supportsArgumentsClass ? supported : unsupported;
+
+	exports.supported = supported;
+	function supported(object) {
+	  return Object.prototype.toString.call(object) == '[object Arguments]';
+	}
+	exports.unsupported = unsupported;
+	function unsupported(object){
+	  return object &&
+	    typeof object == 'object' &&
+	    typeof object.length == 'number' &&
+	    Object.prototype.hasOwnProperty.call(object, 'callee') &&
+	    !Object.prototype.propertyIsEnumerable.call(object, 'callee') ||
+	    false;
+	}});
+	var is_arguments_1 = is_arguments.supported;
+	var is_arguments_2 = is_arguments.unsupported;
+
+	var deepEqual_1 = createCommonjsModule(function (module) {
+	var pSlice = Array.prototype.slice;
+
+
+
+	var deepEqual = module.exports = function (actual, expected, opts) {
+	  if (!opts) opts = {};
+	  // 7.1. All identical values are equivalent, as determined by ===.
+	  if (actual === expected) {
+	    return true;
+
+	  } else if (actual instanceof Date && expected instanceof Date) {
+	    return actual.getTime() === expected.getTime();
+
+	  // 7.3. Other pairs that do not both pass typeof value == 'object',
+	  // equivalence is determined by ==.
+	  } else if (!actual || !expected || typeof actual != 'object' && typeof expected != 'object') {
+	    return opts.strict ? actual === expected : actual == expected;
+
+	  // 7.4. For all other Object pairs, including Array objects, equivalence is
+	  // determined by having the same number of owned properties (as verified
+	  // with Object.prototype.hasOwnProperty.call), the same set of keys
+	  // (although not necessarily the same order), equivalent values for every
+	  // corresponding key, and an identical 'prototype' property. Note: this
+	  // accounts for both named and indexed properties on Arrays.
+	  } else {
+	    return objEquiv(actual, expected, opts);
+	  }
+	};
+
+	function isUndefinedOrNull(value) {
+	  return value === null || value === undefined;
+	}
+
+	function isBuffer (x) {
+	  if (!x || typeof x !== 'object' || typeof x.length !== 'number') return false;
+	  if (typeof x.copy !== 'function' || typeof x.slice !== 'function') {
+	    return false;
+	  }
+	  if (x.length > 0 && typeof x[0] !== 'number') return false;
+	  return true;
+	}
+
+	function objEquiv(a, b, opts) {
+	  var i, key;
+	  if (isUndefinedOrNull(a) || isUndefinedOrNull(b))
+	    return false;
+	  // an identical 'prototype' property.
+	  if (a.prototype !== b.prototype) return false;
+	  //~~~I've managed to break Object.keys through screwy arguments passing.
+	  //   Converting to array solves the problem.
+	  if (is_arguments(a)) {
+	    if (!is_arguments(b)) {
+	      return false;
+	    }
+	    a = pSlice.call(a);
+	    b = pSlice.call(b);
+	    return deepEqual(a, b, opts);
+	  }
+	  if (isBuffer(a)) {
+	    if (!isBuffer(b)) {
+	      return false;
+	    }
+	    if (a.length !== b.length) return false;
+	    for (i = 0; i < a.length; i++) {
+	      if (a[i] !== b[i]) return false;
+	    }
+	    return true;
+	  }
+	  try {
+	    var ka = keys$2(a),
+	        kb = keys$2(b);
+	  } catch (e) {//happens when one is a string literal and the other isn't
+	    return false;
+	  }
+	  // having the same number of owned properties (keys incorporates
+	  // hasOwnProperty)
+	  if (ka.length != kb.length)
+	    return false;
+	  //the same set of keys (although not necessarily the same order),
+	  ka.sort();
+	  kb.sort();
+	  //~~~cheap key test
+	  for (i = ka.length - 1; i >= 0; i--) {
+	    if (ka[i] != kb[i])
+	      return false;
+	  }
+	  //equivalent values for every corresponding key, and
+	  //~~~possibly expensive deep test
+	  for (i = ka.length - 1; i >= 0; i--) {
+	    key = ka[i];
+	    if (!deepEqual(a[key], b[key], opts)) return false;
+	  }
+	  return typeof a === typeof b;
+	}
+	});
+
 	var zIndexOptions = {
 	  dragging: 5000,
 	  dropAnimating: 4500
@@ -11484,7 +12328,7 @@
 	  event.preventDefault();
 	}
 
-	function Draggable(props) {
+	var Draggable = function Draggable(props) {
 	  var ref = React.useRef(null);
 	  var setRef = useCallback(function (el) {
 	    ref.current = el;
@@ -11495,9 +12339,11 @@
 
 	  var _useRequiredContext = useRequiredContext(AppContext),
 	      contextId = _useRequiredContext.contextId,
-	      liftInstructionId = _useRequiredContext.liftInstructionId;
+	      liftInstructionId = _useRequiredContext.liftInstructionId,
+	      lazyDispatch = _useRequiredContext.lazyDispatch;
 
 	  var children = props.children,
+	      ChildComponent = props.childComponent,
 	      draggableId = props.draggableId,
 	      isEnabled = props.isEnabled,
 	      shouldRespectForcePress = props.shouldRespectForcePress,
@@ -11546,8 +12392,8 @@
 	      return;
 	    }
 
-	    dropAnimationFinishedAction();
-	  }, [dropAnimationFinishedAction, mapped]);
+	    lazyDispatch(dropAnimationFinishedAction());
+	  }, [dropAnimationFinishedAction, lazyDispatch, mapped]);
 	  var provided = useMemo(function () {
 	    var style = getStyle$1(mapped);
 	    var onTransitionEnd = mapped.type === 'DRAGGING' && mapped.dropping ? onMoveEnd : null;
@@ -11563,8 +12409,18 @@
 	    };
 	    return result;
 	  }, [contextId, dragHandleProps, draggableId, mapped, onMoveEnd, setRef]);
-	  return children(provided, mapped.snapshot);
-	}
+
+	  if (ChildComponent) {
+	    return React__default.createElement(ChildComponent, _extends({
+	      provided: provided,
+	      snapshot: mapped.snapshot
+	    }, props));
+	  } else {
+	    return children(provided, mapped.snapshot);
+	  }
+	};
+
+	var Draggable$1 = pure(Draggable);
 
 	var isStrictEqual = (function (a, b) {
 	  return a === b;
@@ -11796,36 +12652,56 @@
 
 	  return selector;
 	};
-	var mapDispatchToProps = {
-	  dropAnimationFinished: dropAnimationFinished
+
+	var mapDispatchToProps = function mapDispatchToProps() {
+	  return {
+	    dropAnimationFinished: dropAnimationFinished
+	  };
 	};
+
 	var ConnectedDraggable = connect(makeMapStateToProps, mapDispatchToProps, null, {
 	  context: StoreContext,
 	  pure: true,
 	  areStatePropsEqual: isStrictEqual
-	})(Draggable);
+	})(Draggable$1);
 
-	function PrivateDraggable(props) {
+	var ImpurePrivateDraggable = function ImpurePrivateDraggable(props) {
 	  var droppableContext = useRequiredContext(DroppableContext);
 	  var isUsingCloneFor = droppableContext.isUsingCloneFor;
+	  return React.useMemo(function () {
+	    if (isUsingCloneFor === props.draggableId && !props.isClone) {
+	      return null;
+	    }
 
-	  if (isUsingCloneFor === props.draggableId && !props.isClone) {
-	    return null;
+	    return React__default.createElement(ConnectedDraggable, props);
+	  }, [isUsingCloneFor]);
+	};
+
+	var PrivateDraggable = pure(ImpurePrivateDraggable);
+	var PublicDraggable = function (_React$PureComponent) {
+	  _inheritsLoose(PublicDraggable, _React$PureComponent);
+
+	  function PublicDraggable() {
+	    return _React$PureComponent.apply(this, arguments) || this;
 	  }
 
-	  return React__default.createElement(ConnectedDraggable, props);
-	}
-	function PublicDraggable(props) {
-	  var isEnabled = typeof props.isDragDisabled === 'boolean' ? !props.isDragDisabled : true;
-	  var canDragInteractiveElements = Boolean(props.disableInteractiveElementBlocking);
-	  var shouldRespectForcePress = Boolean(props.shouldRespectForcePress);
-	  return React__default.createElement(PrivateDraggable, _extends({}, props, {
-	    isClone: false,
-	    isEnabled: isEnabled,
-	    canDragInteractiveElements: canDragInteractiveElements,
-	    shouldRespectForcePress: shouldRespectForcePress
-	  }));
-	}
+	  var _proto = PublicDraggable.prototype;
+
+	  _proto.render = function render() {
+	    var props = this.props;
+	    var isEnabled = typeof props.isDragDisabled === 'boolean' ? !props.isDragDisabled : true;
+	    var canDragInteractiveElements = Boolean(props.disableInteractiveElementBlocking);
+	    var shouldRespectForcePress = Boolean(props.shouldRespectForcePress);
+	    return React__default.createElement(ConnectedDraggable, _extends({}, props, {
+	      isClone: false,
+	      isEnabled: isEnabled,
+	      canDragInteractiveElements: canDragInteractiveElements,
+	      shouldRespectForcePress: shouldRespectForcePress
+	    }));
+	  };
+
+	  return PublicDraggable;
+	}(React__default.PureComponent);
 
 	function Droppable(props) {
 	  var appContext = React.useContext(AppContext);

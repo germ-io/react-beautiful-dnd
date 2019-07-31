@@ -317,8 +317,10 @@ export const makeMapStateToProps = (): Selector => {
   return selector;
 };
 
-const mapDispatchToProps: DispatchProps = {
-  dropAnimationFinished: dropAnimationFinishedAction,
+const mapDispatchToProps: DispatchProps = () => {
+  return {
+    dropAnimationFinished: dropAnimationFinishedAction,
+  }
 };
 
 // Leaning heavily on the default shallow equality checking

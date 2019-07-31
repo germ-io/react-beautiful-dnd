@@ -1,5 +1,6 @@
 // @flow
 import { useRef } from 'react';
+import React from 'react';
 import { useMemo, useCallback } from 'use-memo-one';
 import getStyle from './get-style';
 import useDraggablePublisher, {
@@ -14,12 +15,13 @@ import type {
 } from './draggable-types';
 import { useValidation, useClonePropValidation } from './use-validation';
 import useRequiredContext from '../use-required-context';
+import { pure } from 'recompose';
 
 function preventHtml5Dnd(event: DragEvent) {
   event.preventDefault();
 }
 
-export default function Draggable(props: Props) {
+const Draggable = function Draggable(props: Props) {
   // reference to DOM node
   const ref = useRef<?HTMLElement>(null);
   const setRef = useCallback((el: ?HTMLElement) => {
@@ -28,12 +30,13 @@ export default function Draggable(props: Props) {
   const getRef = useCallback((): ?HTMLElement => ref.current, []);
 
   // context
-  const { contextId, liftInstructionId } = useRequiredContext(AppContext);
+  const { contextId, liftInstructionId, lazyDispatch } = useRequiredContext(AppContext);
 
   // props
   const {
     // ownProps
     children,
+    childComponent: ChildComponent,
     draggableId,
     isEnabled,
     shouldRespectForcePress,
@@ -114,9 +117,9 @@ export default function Draggable(props: Props) {
         return;
       }
 
-      dropAnimationFinishedAction();
+      lazyDispatch(dropAnimationFinishedAction());
     },
-    [dropAnimationFinishedAction, mapped],
+    [dropAnimationFinishedAction, lazyDispatch, mapped],
   );
 
   const provided: Provided = useMemo(() => {
@@ -138,5 +141,11 @@ export default function Draggable(props: Props) {
     return result;
   }, [contextId, dragHandleProps, draggableId, mapped, onMoveEnd, setRef]);
 
-  return children(provided, mapped.snapshot);
+  if (ChildComponent) {
+    return (<ChildComponent provided={provided} snapshot={mapped.snapshot} {...props} />);
+  } else {
+    return children(provided, mapped.snapshot);
+  }
 }
+
+export default pure(Draggable);

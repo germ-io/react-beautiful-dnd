@@ -224,6 +224,7 @@ export default function App(props: Props) {
       isMovementAllowed: getIsMovementAllowed,
       liftInstructionId,
       registry,
+      lazyDispatch,
     }),
     [
       contextId,
@@ -233,6 +234,7 @@ export default function App(props: Props) {
       getIsMovementAllowed,
       liftInstructionId,
       registry,
+      lazyDispatch,
     ],
   );
 

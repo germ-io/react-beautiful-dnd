@@ -222,8 +222,10 @@ export const makeMapStateToProps = (): Selector => {
   return selector;
 };
 
-const mapDispatchToProps: DispatchProps = {
-  updateViewportMaxScroll: updateViewportMaxScrollAction,
+const mapDispatchToProps: DispatchProps = () => {
+  return {
+    updateViewportMaxScroll: updateViewportMaxScrollAction,
+  };
 };
 
 function getBody(): HTMLElement {

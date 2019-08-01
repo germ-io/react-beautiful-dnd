@@ -143,9 +143,8 @@ const Draggable = function Draggable(props: Props) {
 
   if (ChildComponent) {
     return (<ChildComponent provided={provided} snapshot={mapped.snapshot} {...props} />);
-  } else {
-    return children(provided, mapped.snapshot);
   }
+  return children(provided, mapped.snapshot);
 }
 
 export default pure(Draggable);

@@ -8012,9 +8012,9 @@ var Draggable = function Draggable(props) {
       provided: provided,
       snapshot: mapped.snapshot
     }, props));
-  } else {
-    return children(provided, mapped.snapshot);
   }
+
+  return children(provided, mapped.snapshot);
 };
 
 var Draggable$1 = pure(Draggable);
@@ -8317,6 +8317,7 @@ function Droppable(props) {
       isCombineEnabled = props.isCombineEnabled,
       snapshot = props.snapshot,
       useClone = props.useClone,
+      ChildComponent = props.childComponent,
       updateViewportMaxScroll = props.updateViewportMaxScroll,
       getContainerForClone = props.getContainerForClone;
   var getDroppableRef = useCallback(function () {
@@ -8331,13 +8332,17 @@ function Droppable(props) {
   var setPlaceholderRef = useCallback(function (value) {
     placeholderRef.current = value;
   }, []);
+
+  var _useRequiredContext = useRequiredContext(AppContext),
+      lazyDispatch = _useRequiredContext.lazyDispatch;
+
   var onPlaceholderTransitionEnd = useCallback(function () {
     if (isMovementAllowed()) {
-      updateViewportMaxScroll({
+      lazyDispatch(updateViewportMaxScroll({
         maxScroll: getMaxWindowScroll()
-      });
+      }));
     }
-  }, [isMovementAllowed, updateViewportMaxScroll]);
+  }, [isMovementAllowed, updateViewportMaxScroll, lazyDispatch]);
   useDroppablePublisher({
     droppableId: droppableId,
     type: type,
@@ -8416,8 +8421,13 @@ function Droppable(props) {
 
   return React.createElement(DroppableContext.Provider, {
     value: droppableContext
-  }, children(provided, snapshot), getClone());
+  }, ChildComponent ? React.createElement(ChildComponent, _extends({
+    provided: provided,
+    snapshot: snapshot
+  }, props)) : children(provided, snapshot), getClone());
 }
+
+var Droppable$1 = pure(Droppable);
 
 var isMatchingType = function isMatchingType(type, critical) {
   return type === critical.droppable.type;
@@ -8545,8 +8555,11 @@ var makeMapStateToProps$1 = function makeMapStateToProps() {
 
   return selector;
 };
-var mapDispatchToProps$1 = {
-  updateViewportMaxScroll: updateViewportMaxScroll
+
+var mapDispatchToProps$1 = function mapDispatchToProps() {
+  return {
+    updateViewportMaxScroll: updateViewportMaxScroll
+  };
 };
 
 function getBody() {
@@ -8568,7 +8581,7 @@ var ConnectedDroppable = connect(makeMapStateToProps$1, mapDispatchToProps$1, nu
   context: StoreContext,
   pure: true,
   areStatePropsEqual: isStrictEqual
-})(Droppable);
+})(Droppable$1);
 ConnectedDroppable.defaultProps = defaultProps;
 
 export { DragDropContext, PublicDraggable as Draggable, ConnectedDroppable as Droppable, resetServerContext };

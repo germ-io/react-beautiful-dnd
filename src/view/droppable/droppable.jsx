@@ -22,8 +22,10 @@ import AnimateInOut, {
   type AnimateProvided,
 } from '../animate-in-out/animate-in-out';
 import { PrivateDraggable } from '../draggable/draggable-api';
+import { pure } from 'recompose';
+import useRequiredContext from '../use-required-context';
 
-export default function Droppable(props: Props) {
+function Droppable(props: Props) {
   const appContext: ?AppContextValue = useContext<?AppContextValue>(AppContext);
   invariant(appContext, 'Could not find app context');
   const { contextId, isMovementAllowed } = appContext;
@@ -45,6 +47,7 @@ export default function Droppable(props: Props) {
     // map props
     snapshot,
     useClone,
+    childComponent: ChildComponent,
     // dispatch props
     updateViewportMaxScroll,
 
@@ -67,12 +70,15 @@ export default function Droppable(props: Props) {
     placeholderRef.current = value;
   }, []);
 
+  const { lazyDispatch } = useRequiredContext(AppContext);
   const onPlaceholderTransitionEnd = useCallback(() => {
     // A placeholder change can impact the window's max scroll
     if (isMovementAllowed()) {
-      updateViewportMaxScroll({ maxScroll: getMaxWindowScroll() });
+      lazyDispatch(
+        updateViewportMaxScroll({ maxScroll: getMaxWindowScroll() })
+      );
     }
-  }, [isMovementAllowed, updateViewportMaxScroll]);
+  }, [isMovementAllowed, updateViewportMaxScroll, lazyDispatch]);
 
   useDroppablePublisher({
     droppableId,
@@ -161,8 +167,14 @@ export default function Droppable(props: Props) {
 
   return (
     <DroppableContext.Provider value={droppableContext}>
-      {children(provided, snapshot)}
+      {ChildComponent ? (
+        <ChildComponent provided={provided} snapshot={snapshot} {...props} />
+      ) : (
+        children(provided, snapshot)
+      )}
       {getClone()}
     </DroppableContext.Provider>
   );
 }
+
+export default pure(Droppable);

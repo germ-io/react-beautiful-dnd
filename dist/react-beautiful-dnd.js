@@ -3453,6 +3453,139 @@
 
 	setBatch(ReactDOM.unstable_batchedUpdates);
 
+	var keys = createCommonjsModule(function (module, exports) {
+	exports = module.exports = typeof Object.keys === 'function'
+	  ? Object.keys : shim;
+
+	exports.shim = shim;
+	function shim (obj) {
+	  var keys = [];
+	  for (var key in obj) keys.push(key);
+	  return keys;
+	}
+	});
+	var keys_1 = keys.shim;
+
+	var is_arguments = createCommonjsModule(function (module, exports) {
+	var supportsArgumentsClass = (function(){
+	  return Object.prototype.toString.call(arguments)
+	})() == '[object Arguments]';
+
+	exports = module.exports = supportsArgumentsClass ? supported : unsupported;
+
+	exports.supported = supported;
+	function supported(object) {
+	  return Object.prototype.toString.call(object) == '[object Arguments]';
+	}
+	exports.unsupported = unsupported;
+	function unsupported(object){
+	  return object &&
+	    typeof object == 'object' &&
+	    typeof object.length == 'number' &&
+	    Object.prototype.hasOwnProperty.call(object, 'callee') &&
+	    !Object.prototype.propertyIsEnumerable.call(object, 'callee') ||
+	    false;
+	}});
+	var is_arguments_1 = is_arguments.supported;
+	var is_arguments_2 = is_arguments.unsupported;
+
+	var deepEqual_1 = createCommonjsModule(function (module) {
+	var pSlice = Array.prototype.slice;
+
+
+
+	var deepEqual = module.exports = function (actual, expected, opts) {
+	  if (!opts) opts = {};
+	  // 7.1. All identical values are equivalent, as determined by ===.
+	  if (actual === expected) {
+	    return true;
+
+	  } else if (actual instanceof Date && expected instanceof Date) {
+	    return actual.getTime() === expected.getTime();
+
+	  // 7.3. Other pairs that do not both pass typeof value == 'object',
+	  // equivalence is determined by ==.
+	  } else if (!actual || !expected || typeof actual != 'object' && typeof expected != 'object') {
+	    return opts.strict ? actual === expected : actual == expected;
+
+	  // 7.4. For all other Object pairs, including Array objects, equivalence is
+	  // determined by having the same number of owned properties (as verified
+	  // with Object.prototype.hasOwnProperty.call), the same set of keys
+	  // (although not necessarily the same order), equivalent values for every
+	  // corresponding key, and an identical 'prototype' property. Note: this
+	  // accounts for both named and indexed properties on Arrays.
+	  } else {
+	    return objEquiv(actual, expected, opts);
+	  }
+	};
+
+	function isUndefinedOrNull(value) {
+	  return value === null || value === undefined;
+	}
+
+	function isBuffer (x) {
+	  if (!x || typeof x !== 'object' || typeof x.length !== 'number') return false;
+	  if (typeof x.copy !== 'function' || typeof x.slice !== 'function') {
+	    return false;
+	  }
+	  if (x.length > 0 && typeof x[0] !== 'number') return false;
+	  return true;
+	}
+
+	function objEquiv(a, b, opts) {
+	  var i, key;
+	  if (isUndefinedOrNull(a) || isUndefinedOrNull(b))
+	    return false;
+	  // an identical 'prototype' property.
+	  if (a.prototype !== b.prototype) return false;
+	  //~~~I've managed to break Object.keys through screwy arguments passing.
+	  //   Converting to array solves the problem.
+	  if (is_arguments(a)) {
+	    if (!is_arguments(b)) {
+	      return false;
+	    }
+	    a = pSlice.call(a);
+	    b = pSlice.call(b);
+	    return deepEqual(a, b, opts);
+	  }
+	  if (isBuffer(a)) {
+	    if (!isBuffer(b)) {
+	      return false;
+	    }
+	    if (a.length !== b.length) return false;
+	    for (i = 0; i < a.length; i++) {
+	      if (a[i] !== b[i]) return false;
+	    }
+	    return true;
+	  }
+	  try {
+	    var ka = keys(a),
+	        kb = keys(b);
+	  } catch (e) {//happens when one is a string literal and the other isn't
+	    return false;
+	  }
+	  // having the same number of owned properties (keys incorporates
+	  // hasOwnProperty)
+	  if (ka.length != kb.length)
+	    return false;
+	  //the same set of keys (although not necessarily the same order),
+	  ka.sort();
+	  kb.sort();
+	  //~~~cheap key test
+	  for (i = ka.length - 1; i >= 0; i--) {
+	    if (ka[i] != kb[i])
+	      return false;
+	  }
+	  //equivalent values for every corresponding key, and
+	  //~~~possibly expensive deep test
+	  for (i = ka.length - 1; i >= 0; i--) {
+	    key = ka[i];
+	    if (!deepEqual(a[key], b[key], opts)) return false;
+	  }
+	  return typeof a === typeof b;
+	}
+	});
+
 	var origin = {
 	  x: 0,
 	  y: 0
@@ -6540,9 +6673,9 @@
 	  };
 	});
 
-	var keys = _core.Object.keys;
+	var keys$1 = _core.Object.keys;
 
-	var keys$1 = keys;
+	var keys$2 = keys$1;
 
 	function checkIndexesAreConsecutive(droppableId, draggables) {
 	  var insideDestination = getDraggablesInsideDroppable(droppableId, draggables);
@@ -6565,7 +6698,7 @@
 	    }
 	  }
 
-	  if (!keys$1(errors).length) {
+	  if (!keys$2(errors).length) {
 	    return;
 	  }
 
@@ -7557,13 +7690,13 @@
 	          removals = _staging.removals,
 	          modified = _staging.modified;
 
-	      var added = keys$1(additions).map(function (id) {
+	      var added = keys$2(additions).map(function (id) {
 	        return registry.draggable.getById(id).getDimension(origin);
 	      }).sort(function (a, b) {
 	        return a.descriptor.index - b.descriptor.index;
 	      });
 
-	      var updated = keys$1(modified).map(function (id) {
+	      var updated = keys$2(modified).map(function (id) {
 	        var entry = registry.droppable.getById(id);
 	        var isHome = entry.descriptor.id === critical.droppable.id;
 	        var options = {
@@ -7574,7 +7707,7 @@
 
 	      var result = {
 	        additions: added,
-	        removals: keys$1(removals),
+	        removals: keys$2(removals),
 	        modified: updated
 	      };
 	      staging = clean$2();
@@ -10418,6 +10551,200 @@
 	  }
 	}
 
+	/**
+	 * Copyright (c) 2013-present, Facebook, Inc.
+	 *
+	 * This source code is licensed under the MIT license found in the
+	 * LICENSE file in the root directory of this source tree.
+	 *
+	 * @typechecks
+	 * 
+	 */
+
+	var hasOwnProperty$2 = Object.prototype.hasOwnProperty;
+
+	/**
+	 * inlined Object.is polyfill to avoid requiring consumers ship their own
+	 * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/is
+	 */
+	function is$2(x, y) {
+	  // SameValue algorithm
+	  if (x === y) {
+	    // Steps 1-5, 7-10
+	    // Steps 6.b-6.e: +0 != -0
+	    // Added the nonzero y check to make Flow happy, but it is redundant
+	    return x !== 0 || y !== 0 || 1 / x === 1 / y;
+	  } else {
+	    // Step 6.a: NaN == NaN
+	    return x !== x && y !== y;
+	  }
+	}
+
+	/**
+	 * Performs equality by iterating through keys on an object and returning false
+	 * when any key has values which are not strictly equal between the arguments.
+	 * Returns true when the values of all keys are strictly equal.
+	 */
+	function shallowEqual$1(objA, objB) {
+	  if (is$2(objA, objB)) {
+	    return true;
+	  }
+
+	  if (typeof objA !== 'object' || objA === null || typeof objB !== 'object' || objB === null) {
+	    return false;
+	  }
+
+	  var keysA = Object.keys(objA);
+	  var keysB = Object.keys(objB);
+
+	  if (keysA.length !== keysB.length) {
+	    return false;
+	  }
+
+	  // Test for A's keys different from B.
+	  for (var i = 0; i < keysA.length; i++) {
+	    if (!hasOwnProperty$2.call(objB, keysA[i]) || !is$2(objA[keysA[i]], objB[keysA[i]])) {
+	      return false;
+	    }
+	  }
+
+	  return true;
+	}
+
+	var shallowEqual_1 = shallowEqual$1;
+
+	var lib = createCommonjsModule(function (module, exports) {
+
+	Object.defineProperty(exports, "__esModule", {
+	  value: true
+	});
+	var createChangeEmitter = exports.createChangeEmitter = function createChangeEmitter() {
+	  var currentListeners = [];
+	  var nextListeners = currentListeners;
+
+	  function ensureCanMutateNextListeners() {
+	    if (nextListeners === currentListeners) {
+	      nextListeners = currentListeners.slice();
+	    }
+	  }
+
+	  function listen(listener) {
+	    if (typeof listener !== 'function') {
+	      throw new Error('Expected listener to be a function.');
+	    }
+
+	    var isSubscribed = true;
+
+	    ensureCanMutateNextListeners();
+	    nextListeners.push(listener);
+
+	    return function () {
+	      if (!isSubscribed) {
+	        return;
+	      }
+
+	      isSubscribed = false;
+
+	      ensureCanMutateNextListeners();
+	      var index = nextListeners.indexOf(listener);
+	      nextListeners.splice(index, 1);
+	    };
+	  }
+
+	  function emit() {
+	    currentListeners = nextListeners;
+	    var listeners = currentListeners;
+	    for (var i = 0; i < listeners.length; i++) {
+	      listeners[i].apply(listeners, arguments);
+	    }
+	  }
+
+	  return {
+	    listen: listen,
+	    emit: emit
+	  };
+	};
+	});
+
+	unwrapExports(lib);
+	var lib_1 = lib.createChangeEmitter;
+
+	var setStatic = function setStatic(key, value) {
+	  return function (BaseComponent) {
+	    /* eslint-disable no-param-reassign */
+	    BaseComponent[key] = value;
+	    /* eslint-enable no-param-reassign */
+
+	    return BaseComponent;
+	  };
+	};
+
+	var setDisplayName = function setDisplayName(displayName) {
+	  return setStatic('displayName', displayName);
+	};
+
+	var getDisplayName = function getDisplayName(Component$$1) {
+	  if (typeof Component$$1 === 'string') {
+	    return Component$$1;
+	  }
+
+	  if (!Component$$1) {
+	    return undefined;
+	  }
+
+	  return Component$$1.displayName || Component$$1.name || 'Component';
+	};
+
+	var wrapDisplayName = function wrapDisplayName(BaseComponent, hocName) {
+	  return hocName + "(" + getDisplayName(BaseComponent) + ")";
+	};
+
+	var shouldUpdate = function shouldUpdate(test) {
+	  return function (BaseComponent) {
+	    var factory = React.createFactory(BaseComponent);
+
+	    var ShouldUpdate =
+	    /*#__PURE__*/
+	    function (_Component) {
+	      _inheritsLoose$1(ShouldUpdate, _Component);
+
+	      function ShouldUpdate() {
+	        return _Component.apply(this, arguments) || this;
+	      }
+
+	      var _proto = ShouldUpdate.prototype;
+
+	      _proto.shouldComponentUpdate = function shouldComponentUpdate(nextProps) {
+	        return test(this.props, nextProps);
+	      };
+
+	      _proto.render = function render() {
+	        return factory(this.props);
+	      };
+
+	      return ShouldUpdate;
+	    }(React.Component);
+
+	    {
+	      return setDisplayName(wrapDisplayName(BaseComponent, 'shouldUpdate'))(ShouldUpdate);
+	    }
+
+	    return ShouldUpdate;
+	  };
+	};
+
+	var pure = function pure(BaseComponent) {
+	  var hoc = shouldUpdate(function (props, nextProps) {
+	    return !shallowEqual_1(props, nextProps);
+	  });
+
+	  {
+	    return setDisplayName(wrapDisplayName(BaseComponent, 'pure'))(hoc(BaseComponent));
+	  }
+
+	  return hoc(BaseComponent);
+	};
+
 	var createResponders = function createResponders(props) {
 	  return {
 	    onBeforeDragStart: props.onBeforeDragStart,
@@ -10436,7 +10763,8 @@
 	  var contextId = props.contextId,
 	      setOnError = props.setOnError,
 	      sensors = props.sensors,
-	      liftInstruction = props.liftInstruction;
+	      liftInstruction = props.liftInstruction,
+	      childComponent = props.childComponent;
 	  var lazyStoreRef = React.useRef(null);
 	  var draggableRef = React.useRef(null);
 	  useStartupValidation();
@@ -10460,17 +10788,15 @@
 	    }, lazyDispatch);
 	  }, [lazyDispatch]);
 	  var registry = useRegistry();
-
-	  var getDraggableRef = function getDraggableRef() {
+	  var getDraggableRef = useCallback(function () {
 	    return draggableRef.current;
-	  };
-
+	  }, []);
 	  var dimensionMarshal = useMemo(function () {
 	    return createDimensionMarshal(registry, callbacks, {
 	      getContainer: getDraggableRef
 	    });
 	  }, [registry, callbacks, getDraggableRef]);
-	  var modifiedScrollWondow = useCallback(function (change) {
+	  var modifiedScrollWindow = useCallback(function (change) {
 	    var current = getStore(lazyStoreRef);
 
 	    if (!getIsMovementAllowed()) {
@@ -10482,10 +10808,10 @@
 	    }
 
 	    scrollContainer(draggableRef.current, change);
-	  });
+	  }, [getIsMovementAllowed]);
 	  var autoScroller = useMemo(function () {
 	    return createAutoScroller(_extends({
-	      scrollWindow: modifiedScrollWondow,
+	      scrollWindow: modifiedScrollWindow,
 	      scrollDroppable: dimensionMarshal.scrollDroppable
 	    }, bindActionCreators({
 	      move: move
@@ -10549,7 +10875,7 @@
 	    current.dispatch(moveByWindowScroll({
 	      newScroll: getContainerScroll(draggableRef.current)
 	    }));
-	  });
+	  }, [getIsMovementAllowed]);
 	  var measuredRef = useCallback(function (ref) {
 	    if (ref === null) {
 	      return;
@@ -10570,7 +10896,7 @@
 	    }
 
 	    throwIfRefIsInvalid(ref);
-	  });
+	  }, [notifyScrollToWindow]);
 	  useSensorMarshal({
 	    contextId: contextId,
 	    store: store,
@@ -10581,13 +10907,27 @@
 	  React.useEffect(function () {
 	    return tryResetStore;
 	  }, [tryResetStore]);
+	  var ChildComponent = childComponent;
 	  return React__default.createElement(AppContext.Provider, {
 	    value: appContext
 	  }, React__default.createElement(Provider, {
 	    context: StoreContext,
 	    store: store
-	  }, props.children(measuredRef)));
+	  }, ChildComponent ? React__default.createElement(ChildComponent, _extends({
+	    measuredRef: measuredRef
+	  }, props)) : props.children(measuredRef)));
 	}
+
+	var arePropsEqual = function arePropsEqual(prevProps, nextProps) {
+	  if (prevProps !== nextProps) {
+	    var isEqual = deepEqual_1(prevProps, nextProps);
+	    return isEqual;
+	  }
+
+	  return prevProps === nextProps;
+	};
+
+	var App$1 = React.memo(App, arePropsEqual);
 
 	var instanceCount = 0;
 	function resetServerContext() {
@@ -10599,7 +10939,7 @@
 	  }, []);
 	  var liftInstruction = props.liftInstruction || preset.liftInstruction;
 	  return React__default.createElement(ErrorBoundary, null, function (setOnError) {
-	    return React__default.createElement(App, _extends({
+	    return React__default.createElement(App$1, _extends({
 	      setOnError: setOnError,
 	      contextId: contextId,
 	      liftInstruction: liftInstruction
@@ -11282,200 +11622,6 @@
 	  return AnimateInOut;
 	}(React__default.PureComponent);
 
-	/**
-	 * Copyright (c) 2013-present, Facebook, Inc.
-	 *
-	 * This source code is licensed under the MIT license found in the
-	 * LICENSE file in the root directory of this source tree.
-	 *
-	 * @typechecks
-	 * 
-	 */
-
-	var hasOwnProperty$2 = Object.prototype.hasOwnProperty;
-
-	/**
-	 * inlined Object.is polyfill to avoid requiring consumers ship their own
-	 * https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/is
-	 */
-	function is$2(x, y) {
-	  // SameValue algorithm
-	  if (x === y) {
-	    // Steps 1-5, 7-10
-	    // Steps 6.b-6.e: +0 != -0
-	    // Added the nonzero y check to make Flow happy, but it is redundant
-	    return x !== 0 || y !== 0 || 1 / x === 1 / y;
-	  } else {
-	    // Step 6.a: NaN == NaN
-	    return x !== x && y !== y;
-	  }
-	}
-
-	/**
-	 * Performs equality by iterating through keys on an object and returning false
-	 * when any key has values which are not strictly equal between the arguments.
-	 * Returns true when the values of all keys are strictly equal.
-	 */
-	function shallowEqual$1(objA, objB) {
-	  if (is$2(objA, objB)) {
-	    return true;
-	  }
-
-	  if (typeof objA !== 'object' || objA === null || typeof objB !== 'object' || objB === null) {
-	    return false;
-	  }
-
-	  var keysA = Object.keys(objA);
-	  var keysB = Object.keys(objB);
-
-	  if (keysA.length !== keysB.length) {
-	    return false;
-	  }
-
-	  // Test for A's keys different from B.
-	  for (var i = 0; i < keysA.length; i++) {
-	    if (!hasOwnProperty$2.call(objB, keysA[i]) || !is$2(objA[keysA[i]], objB[keysA[i]])) {
-	      return false;
-	    }
-	  }
-
-	  return true;
-	}
-
-	var shallowEqual_1 = shallowEqual$1;
-
-	var lib = createCommonjsModule(function (module, exports) {
-
-	Object.defineProperty(exports, "__esModule", {
-	  value: true
-	});
-	var createChangeEmitter = exports.createChangeEmitter = function createChangeEmitter() {
-	  var currentListeners = [];
-	  var nextListeners = currentListeners;
-
-	  function ensureCanMutateNextListeners() {
-	    if (nextListeners === currentListeners) {
-	      nextListeners = currentListeners.slice();
-	    }
-	  }
-
-	  function listen(listener) {
-	    if (typeof listener !== 'function') {
-	      throw new Error('Expected listener to be a function.');
-	    }
-
-	    var isSubscribed = true;
-
-	    ensureCanMutateNextListeners();
-	    nextListeners.push(listener);
-
-	    return function () {
-	      if (!isSubscribed) {
-	        return;
-	      }
-
-	      isSubscribed = false;
-
-	      ensureCanMutateNextListeners();
-	      var index = nextListeners.indexOf(listener);
-	      nextListeners.splice(index, 1);
-	    };
-	  }
-
-	  function emit() {
-	    currentListeners = nextListeners;
-	    var listeners = currentListeners;
-	    for (var i = 0; i < listeners.length; i++) {
-	      listeners[i].apply(listeners, arguments);
-	    }
-	  }
-
-	  return {
-	    listen: listen,
-	    emit: emit
-	  };
-	};
-	});
-
-	unwrapExports(lib);
-	var lib_1 = lib.createChangeEmitter;
-
-	var setStatic = function setStatic(key, value) {
-	  return function (BaseComponent) {
-	    /* eslint-disable no-param-reassign */
-	    BaseComponent[key] = value;
-	    /* eslint-enable no-param-reassign */
-
-	    return BaseComponent;
-	  };
-	};
-
-	var setDisplayName = function setDisplayName(displayName) {
-	  return setStatic('displayName', displayName);
-	};
-
-	var getDisplayName = function getDisplayName(Component$$1) {
-	  if (typeof Component$$1 === 'string') {
-	    return Component$$1;
-	  }
-
-	  if (!Component$$1) {
-	    return undefined;
-	  }
-
-	  return Component$$1.displayName || Component$$1.name || 'Component';
-	};
-
-	var wrapDisplayName = function wrapDisplayName(BaseComponent, hocName) {
-	  return hocName + "(" + getDisplayName(BaseComponent) + ")";
-	};
-
-	var shouldUpdate = function shouldUpdate(test) {
-	  return function (BaseComponent) {
-	    var factory = React.createFactory(BaseComponent);
-
-	    var ShouldUpdate =
-	    /*#__PURE__*/
-	    function (_Component) {
-	      _inheritsLoose$1(ShouldUpdate, _Component);
-
-	      function ShouldUpdate() {
-	        return _Component.apply(this, arguments) || this;
-	      }
-
-	      var _proto = ShouldUpdate.prototype;
-
-	      _proto.shouldComponentUpdate = function shouldComponentUpdate(nextProps) {
-	        return test(this.props, nextProps);
-	      };
-
-	      _proto.render = function render() {
-	        return factory(this.props);
-	      };
-
-	      return ShouldUpdate;
-	    }(React.Component);
-
-	    {
-	      return setDisplayName(wrapDisplayName(BaseComponent, 'shouldUpdate'))(ShouldUpdate);
-	    }
-
-	    return ShouldUpdate;
-	  };
-	};
-
-	var pure = function pure(BaseComponent) {
-	  var hoc = shouldUpdate(function (props, nextProps) {
-	    return !shallowEqual_1(props, nextProps);
-	  });
-
-	  {
-	    return setDisplayName(wrapDisplayName(BaseComponent, 'pure'))(hoc(BaseComponent));
-	  }
-
-	  return hoc(BaseComponent);
-	};
-
 	var deepDiff = createCommonjsModule(function (module, exports) {
 	(function(root, factory) { // eslint-disable-line no-extra-semi
 	  var deepDiff = factory(root);
@@ -11988,139 +12134,6 @@
 
 	  return accumulateDiff;
 	}));
-	});
-
-	var keys$2 = createCommonjsModule(function (module, exports) {
-	exports = module.exports = typeof Object.keys === 'function'
-	  ? Object.keys : shim;
-
-	exports.shim = shim;
-	function shim (obj) {
-	  var keys = [];
-	  for (var key in obj) keys.push(key);
-	  return keys;
-	}
-	});
-	var keys_1 = keys$2.shim;
-
-	var is_arguments = createCommonjsModule(function (module, exports) {
-	var supportsArgumentsClass = (function(){
-	  return Object.prototype.toString.call(arguments)
-	})() == '[object Arguments]';
-
-	exports = module.exports = supportsArgumentsClass ? supported : unsupported;
-
-	exports.supported = supported;
-	function supported(object) {
-	  return Object.prototype.toString.call(object) == '[object Arguments]';
-	}
-	exports.unsupported = unsupported;
-	function unsupported(object){
-	  return object &&
-	    typeof object == 'object' &&
-	    typeof object.length == 'number' &&
-	    Object.prototype.hasOwnProperty.call(object, 'callee') &&
-	    !Object.prototype.propertyIsEnumerable.call(object, 'callee') ||
-	    false;
-	}});
-	var is_arguments_1 = is_arguments.supported;
-	var is_arguments_2 = is_arguments.unsupported;
-
-	var deepEqual_1 = createCommonjsModule(function (module) {
-	var pSlice = Array.prototype.slice;
-
-
-
-	var deepEqual = module.exports = function (actual, expected, opts) {
-	  if (!opts) opts = {};
-	  // 7.1. All identical values are equivalent, as determined by ===.
-	  if (actual === expected) {
-	    return true;
-
-	  } else if (actual instanceof Date && expected instanceof Date) {
-	    return actual.getTime() === expected.getTime();
-
-	  // 7.3. Other pairs that do not both pass typeof value == 'object',
-	  // equivalence is determined by ==.
-	  } else if (!actual || !expected || typeof actual != 'object' && typeof expected != 'object') {
-	    return opts.strict ? actual === expected : actual == expected;
-
-	  // 7.4. For all other Object pairs, including Array objects, equivalence is
-	  // determined by having the same number of owned properties (as verified
-	  // with Object.prototype.hasOwnProperty.call), the same set of keys
-	  // (although not necessarily the same order), equivalent values for every
-	  // corresponding key, and an identical 'prototype' property. Note: this
-	  // accounts for both named and indexed properties on Arrays.
-	  } else {
-	    return objEquiv(actual, expected, opts);
-	  }
-	};
-
-	function isUndefinedOrNull(value) {
-	  return value === null || value === undefined;
-	}
-
-	function isBuffer (x) {
-	  if (!x || typeof x !== 'object' || typeof x.length !== 'number') return false;
-	  if (typeof x.copy !== 'function' || typeof x.slice !== 'function') {
-	    return false;
-	  }
-	  if (x.length > 0 && typeof x[0] !== 'number') return false;
-	  return true;
-	}
-
-	function objEquiv(a, b, opts) {
-	  var i, key;
-	  if (isUndefinedOrNull(a) || isUndefinedOrNull(b))
-	    return false;
-	  // an identical 'prototype' property.
-	  if (a.prototype !== b.prototype) return false;
-	  //~~~I've managed to break Object.keys through screwy arguments passing.
-	  //   Converting to array solves the problem.
-	  if (is_arguments(a)) {
-	    if (!is_arguments(b)) {
-	      return false;
-	    }
-	    a = pSlice.call(a);
-	    b = pSlice.call(b);
-	    return deepEqual(a, b, opts);
-	  }
-	  if (isBuffer(a)) {
-	    if (!isBuffer(b)) {
-	      return false;
-	    }
-	    if (a.length !== b.length) return false;
-	    for (i = 0; i < a.length; i++) {
-	      if (a[i] !== b[i]) return false;
-	    }
-	    return true;
-	  }
-	  try {
-	    var ka = keys$2(a),
-	        kb = keys$2(b);
-	  } catch (e) {//happens when one is a string literal and the other isn't
-	    return false;
-	  }
-	  // having the same number of owned properties (keys incorporates
-	  // hasOwnProperty)
-	  if (ka.length != kb.length)
-	    return false;
-	  //the same set of keys (although not necessarily the same order),
-	  ka.sort();
-	  kb.sort();
-	  //~~~cheap key test
-	  for (i = ka.length - 1; i >= 0; i--) {
-	    if (ka[i] != kb[i])
-	      return false;
-	  }
-	  //equivalent values for every corresponding key, and
-	  //~~~possibly expensive deep test
-	  for (i = ka.length - 1; i >= 0; i--) {
-	    key = ka[i];
-	    if (!deepEqual(a[key], b[key], opts)) return false;
-	  }
-	  return typeof a === typeof b;
-	}
 	});
 
 	var zIndexOptions = {
@@ -12642,15 +12655,19 @@
 	    snapshot: getSecondarySnapshot(null)
 	  }
 	};
-	var makeMapStateToProps = function makeMapStateToProps() {
-	  var draggingSelector = getDraggableSelector();
-	  var secondarySelector = getSecondarySelector();
 
-	  var selector = function selector(state, ownProps) {
+	var fastSelector = function fastSelector(state, ownProps) {
+	  if (state.isDragging || state.phase === 'DROP_ANIMATING') {
+	    var draggingSelector = getDraggableSelector();
+	    var secondarySelector = getSecondarySelector();
 	    return draggingSelector(state, ownProps) || secondarySelector(state, ownProps) || defaultMapProps;
-	  };
+	  }
 
-	  return selector;
+	  return defaultMapProps;
+	};
+
+	var makeMapStateToProps = function makeMapStateToProps() {
+	  return fastSelector;
 	};
 
 	var mapDispatchToProps = function mapDispatchToProps() {

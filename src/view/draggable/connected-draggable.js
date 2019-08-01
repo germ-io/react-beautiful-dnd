@@ -303,18 +303,22 @@ const defaultMapProps: MapProps = {
   },
 };
 
+const fastSelector = (state: State, ownProps: OwnProps): MapProps => {
+  if (state.isDragging || state.phase === 'DROP_ANIMATING') {
+    const draggingSelector: TrySelect = getDraggableSelector();
+    const secondarySelector: TrySelect = getSecondarySelector();
+    return (
+      draggingSelector(state, ownProps) ||
+      secondarySelector(state, ownProps) ||
+      defaultMapProps
+    );
+  }
+  return defaultMapProps;
+}
 // Returning a function to ensure each
 // Draggable gets its own selector
 export const makeMapStateToProps = (): Selector => {
-  const draggingSelector: TrySelect = getDraggableSelector();
-  const secondarySelector: TrySelect = getSecondarySelector();
-
-  const selector = (state: State, ownProps: OwnProps): MapProps =>
-    draggingSelector(state, ownProps) ||
-    secondarySelector(state, ownProps) ||
-    defaultMapProps;
-
-  return selector;
+  return fastSelector;
 };
 
 const mapDispatchToProps: DispatchProps = () => {

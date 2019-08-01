@@ -1,8 +1,9 @@
 // @flow
-import React, { useEffect, useRef, useState, type Node } from 'react';
+import React, { memo, useEffect, useRef, useState, type Node } from 'react';
 import invariant from 'tiny-invariant';
 import { bindActionCreators } from 'redux';
 import { Provider } from 'react-redux';
+import equal from 'deep-equal';
 import { useMemo, useCallback } from 'use-memo-one';
 import createStore from '../../state/create-store';
 import createDimensionMarshal from '../../state/dimension-marshal/dimension-marshal';
@@ -51,6 +52,7 @@ import usePrevious from '../use-previous-ref';
 import { warning } from '../../dev-warning';
 import getContainerScroll from '../container/get-container-scroll';
 import useSensorMarshal from '../use-sensor-marshal/use-sensor-marshal';
+import { pure } from 'recompose';
 
 type Props = {|
   ...Responders,
@@ -81,8 +83,8 @@ function getStore(lazyRef: LazyStoreRef): Store {
   return lazyRef.current;
 }
 
-export default function App(props: Props) {
-  const { contextId, setOnError, sensors, liftInstruction } = props;
+function App(props: Props) {
+  const { contextId, setOnError, sensors, liftInstruction, childComponent } = props;
   const lazyStoreRef: LazyStoreRef = useRef<?Store>(null);
   const draggableRef = useRef(null);
 
@@ -125,15 +127,15 @@ export default function App(props: Props) {
 
   const registry: Registry = useRegistry();
 
-  const getDraggableRef = () => {
+  const getDraggableRef = useCallback(() => {
     return draggableRef.current;
-  }
+  }, []);
 
   const dimensionMarshal: DimensionMarshal = useMemo<DimensionMarshal>(() => {
     return createDimensionMarshal(registry, callbacks, { getContainer: getDraggableRef });
   }, [registry, callbacks, getDraggableRef]);
 
-  const modifiedScrollWondow = useCallback((change) => {
+  const modifiedScrollWindow = useCallback((change) => {
     const current: Store = getStore(lazyStoreRef);
     if (!getIsMovementAllowed()) {
       return;
@@ -143,12 +145,12 @@ export default function App(props: Props) {
       return scrollWindow(change);
     }
     scrollContainer(draggableRef.current, change);
-  });
+  }, [getIsMovementAllowed]);
 
   const autoScroller: AutoScroller = useMemo<AutoScroller>(
     () =>
       createAutoScroller({
-        scrollWindow: modifiedScrollWondow,
+        scrollWindow: modifiedScrollWindow,
         scrollDroppable: dimensionMarshal.scrollDroppable,
         ...bindActionCreators(
           {
@@ -247,30 +249,33 @@ export default function App(props: Props) {
       moveByWindowScroll({
         newScroll: getContainerScroll(draggableRef.current),
       }),
-    )
-  });
-  
-  const measuredRef = useCallback(ref => {
-    if (ref === null) {
-      return;
-    }
+    );
+  }, [getIsMovementAllowed]);
 
-    if (ref === draggableRef.current) {
-      return;
-    }
+  const measuredRef = useCallback(
+    ref => {
+      if (ref === null) {
+        return;
+      }
 
-    if (draggableRef.current) {
-      draggableRef.current.removeEventListener('scroll', notifyScrollToWindow);
-    }
+      if (ref === draggableRef.current) {
+        return;
+      }
 
-    // At this point the ref has been changed or initially populated
+      if (draggableRef.current) {
+        draggableRef.current.removeEventListener('scroll', notifyScrollToWindow);
+      }
 
-    draggableRef.current = ref;
-    if (ref) {
-      ref.addEventListener('scroll', notifyScrollToWindow);
-    }
-    throwIfRefIsInvalid(ref);
-  });
+      // At this point the ref has been changed or initially populated
+
+      draggableRef.current = ref;
+      if (ref) {
+        ref.addEventListener('scroll', notifyScrollToWindow);
+      }
+      throwIfRefIsInvalid(ref);
+    },
+    [notifyScrollToWindow],
+  );
 
   useSensorMarshal({
     contextId,
@@ -286,11 +291,21 @@ export default function App(props: Props) {
     return tryResetStore;
   }, [tryResetStore]);
 
+  const ChildComponent = childComponent;
   return (
     <AppContext.Provider value={appContext}>
       <Provider context={StoreContext} store={store}>
-        {props.children(measuredRef)}
+        {ChildComponent ? <ChildComponent measuredRef={measuredRef} {...props} /> : props.children(measuredRef)}
       </Provider>
     </AppContext.Provider>
   );
 }
+const arePropsEqual = (prevProps, nextProps) => {
+  if (prevProps !== nextProps) {
+    const isEqual = equal(prevProps, nextProps);
+    return isEqual;
+  }
+  return prevProps === nextProps;
+};
+
+export default memo(App, arePropsEqual);

@@ -11,14 +11,6 @@ import DroppableContext, {
   type DroppableContextValue,
 } from '../context/droppable-context';
 
-const arePropsEqual = (prevProps, nextProps) => {
-  if (prevProps !== nextProps) {
-    const isEqual = equal(prevProps, nextProps);
-    return isEqual;
-  }
-  return prevProps === nextProps;
-}
-
 const ImpurePrivateDraggable = function ImpurePrivateDraggable(props: PrivateOwnProps) {
   const droppableContext: DroppableContextValue = useRequiredContext(
     DroppableContext,

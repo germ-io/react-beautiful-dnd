@@ -12,6 +12,7 @@ var _inheritsLoose = _interopDefault(require('@babel/runtime-corejs2/helpers/inh
 var invariant = _interopDefault(require('tiny-invariant'));
 var redux = require('redux');
 var reactRedux = require('react-redux');
+var equal = _interopDefault(require('deep-equal'));
 var cssBoxModel = require('css-box-model');
 var memoizeOne = _interopDefault(require('memoize-one'));
 var _Object$values = _interopDefault(require('@babel/runtime-corejs2/core-js/object/values'));
@@ -19,10 +20,9 @@ var _Object$keys = _interopDefault(require('@babel/runtime-corejs2/core-js/objec
 var rafSchd = _interopDefault(require('raf-schd'));
 var _Date$now = _interopDefault(require('@babel/runtime-corejs2/core-js/date/now'));
 var _Object$assign = _interopDefault(require('@babel/runtime-corejs2/core-js/object/assign'));
-var ReactDOM = _interopDefault(require('react-dom'));
 var recompose = require('recompose');
+var ReactDOM = _interopDefault(require('react-dom'));
 require('deep-diff');
-require('deep-equal');
 var _Number$isInteger = _interopDefault(require('@babel/runtime-corejs2/core-js/number/is-integer'));
 
 var isProduction = process.env.NODE_ENV === 'production';
@@ -6894,7 +6894,8 @@ function App(props) {
   var contextId = props.contextId,
       setOnError = props.setOnError,
       sensors = props.sensors,
-      liftInstruction = props.liftInstruction;
+      liftInstruction = props.liftInstruction,
+      childComponent = props.childComponent;
   var lazyStoreRef = React.useRef(null);
   var draggableRef = React.useRef(null);
   useStartupValidation();
@@ -6918,17 +6919,15 @@ function App(props) {
     }, lazyDispatch);
   }, [lazyDispatch]);
   var registry = useRegistry();
-
-  var getDraggableRef = function getDraggableRef() {
+  var getDraggableRef = useMemoOne.useCallback(function () {
     return draggableRef.current;
-  };
-
+  }, []);
   var dimensionMarshal = useMemoOne.useMemo(function () {
     return createDimensionMarshal(registry, callbacks, {
       getContainer: getDraggableRef
     });
   }, [registry, callbacks, getDraggableRef]);
-  var modifiedScrollWondow = useMemoOne.useCallback(function (change) {
+  var modifiedScrollWindow = useMemoOne.useCallback(function (change) {
     var current = getStore(lazyStoreRef);
 
     if (!getIsMovementAllowed()) {
@@ -6940,10 +6939,10 @@ function App(props) {
     }
 
     scrollContainer(draggableRef.current, change);
-  });
+  }, [getIsMovementAllowed]);
   var autoScroller = useMemoOne.useMemo(function () {
     return createAutoScroller(_extends({
-      scrollWindow: modifiedScrollWondow,
+      scrollWindow: modifiedScrollWindow,
       scrollDroppable: dimensionMarshal.scrollDroppable
     }, redux.bindActionCreators({
       move: move
@@ -7007,7 +7006,7 @@ function App(props) {
     current.dispatch(moveByWindowScroll({
       newScroll: getContainerScroll(draggableRef.current)
     }));
-  });
+  }, [getIsMovementAllowed]);
   var measuredRef = useMemoOne.useCallback(function (ref) {
     if (ref === null) {
       return;
@@ -7028,7 +7027,7 @@ function App(props) {
     }
 
     throwIfRefIsInvalid(ref);
-  });
+  }, [notifyScrollToWindow]);
   useSensorMarshal({
     contextId: contextId,
     store: store,
@@ -7039,13 +7038,27 @@ function App(props) {
   React.useEffect(function () {
     return tryResetStore;
   }, [tryResetStore]);
+  var ChildComponent = childComponent;
   return React__default.createElement(AppContext.Provider, {
     value: appContext
   }, React__default.createElement(reactRedux.Provider, {
     context: StoreContext,
     store: store
-  }, props.children(measuredRef)));
+  }, ChildComponent ? React__default.createElement(ChildComponent, _extends({
+    measuredRef: measuredRef
+  }, props)) : props.children(measuredRef)));
 }
+
+var arePropsEqual = function arePropsEqual(prevProps, nextProps) {
+  if (prevProps !== nextProps) {
+    var isEqual = equal(prevProps, nextProps);
+    return isEqual;
+  }
+
+  return prevProps === nextProps;
+};
+
+var App$1 = React.memo(App, arePropsEqual);
 
 var instanceCount = 0;
 function resetServerContext() {
@@ -7057,7 +7070,7 @@ function DragDropContext(props) {
   }, []);
   var liftInstruction = props.liftInstruction || preset.liftInstruction;
   return React__default.createElement(ErrorBoundary, null, function (setOnError) {
-    return React__default.createElement(App, _extends({
+    return React__default.createElement(App$1, _extends({
       setOnError: setOnError,
       contextId: contextId,
       liftInstruction: liftInstruction
@@ -8246,15 +8259,19 @@ var defaultMapProps = {
     snapshot: getSecondarySnapshot(null)
   }
 };
-var makeMapStateToProps = function makeMapStateToProps() {
-  var draggingSelector = getDraggableSelector();
-  var secondarySelector = getSecondarySelector();
 
-  var selector = function selector(state, ownProps) {
+var fastSelector = function fastSelector(state, ownProps) {
+  if (state.isDragging || state.phase === 'DROP_ANIMATING') {
+    var draggingSelector = getDraggableSelector();
+    var secondarySelector = getSecondarySelector();
     return draggingSelector(state, ownProps) || secondarySelector(state, ownProps) || defaultMapProps;
-  };
+  }
 
-  return selector;
+  return defaultMapProps;
+};
+
+var makeMapStateToProps = function makeMapStateToProps() {
+  return fastSelector;
 };
 
 var mapDispatchToProps = function mapDispatchToProps() {

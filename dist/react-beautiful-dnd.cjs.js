@@ -21,6 +21,7 @@ var rafSchd = _interopDefault(require('raf-schd'));
 var reactRedux = require('react-redux');
 var _assertThisInitialized = _interopDefault(require('@babel/runtime-corejs2/helpers/assertThisInitialized'));
 var ReactDOM = _interopDefault(require('react-dom'));
+var equal = _interopDefault(require('deep-equal'));
 var _Number$isInteger = _interopDefault(require('@babel/runtime-corejs2/core-js/number/is-integer'));
 
 var origin = {
@@ -7660,13 +7661,13 @@ var getShouldDraggingAnimate = function getShouldDraggingAnimate(dragging) {
   return dragging.mode === 'SNAP';
 };
 
-var Draggable = function (_PureComponent) {
-  _inheritsLoose(Draggable, _PureComponent);
+var Draggable = function (_Component) {
+  _inheritsLoose(Draggable, _Component);
 
   function Draggable(props, context) {
     var _this;
 
-    _this = _PureComponent.call(this, props, context) || this;
+    _this = _Component.call(this, props, context) || this;
     _this.callbacks = void 0;
     _this.styleContext = void 0;
     _this.ref = null;
@@ -7869,6 +7870,16 @@ var Draggable = function (_PureComponent) {
 
   var _proto = Draggable.prototype;
 
+  _proto.shouldComponentUpdate = function shouldComponentUpdate(nextProps) {
+    var isEqual = equal(this.props, nextProps);
+
+    if (!isEqual) {
+      debugger;
+    }
+
+    return isEqual;
+  };
+
   _proto.componentWillUnmount = function componentWillUnmount() {
     this.ref = null;
   };
@@ -7904,7 +7915,7 @@ var Draggable = function (_PureComponent) {
   };
 
   return Draggable;
-}(React.PureComponent);
+}(Component);
 
 Draggable.contextTypes = (_Draggable$contextTyp = {}, _Draggable$contextTyp[droppableIdKey] = PropTypes.string.isRequired, _Draggable$contextTyp[droppableTypeKey] = PropTypes.string.isRequired, _Draggable$contextTyp[styleContextKey] = PropTypes.string.isRequired, _Draggable$contextTyp);
 

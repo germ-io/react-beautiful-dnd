@@ -4,6 +4,7 @@ import { type Position, type BoxModel } from 'css-box-model';
 import PropTypes from 'prop-types';
 import memoizeOne from 'memoize-one';
 import invariant from 'tiny-invariant';
+import equal from 'deep-equal';
 import { transitions, transforms, combine } from '../animation';
 import type {
   DraggableDimension,
@@ -77,7 +78,7 @@ const getShouldDraggingAnimate = (dragging: DraggingMapProps): boolean => {
   return dragging.mode === 'SNAP';
 };
 
-export default class Draggable extends PureComponent<Props> {
+export default class Draggable extends Component<Props> {
   /* eslint-disable react/sort-comp */
   callbacks: DragHandleCallbacks;
   styleContext: string;
@@ -119,6 +120,14 @@ export default class Draggable extends PureComponent<Props> {
     if (process.env.NODE_ENV !== 'production') {
       checkOwnProps(props);
     }
+  }
+
+  shouldComponentUpdate(nextProps) {
+    const isEqual = equal(this.props, nextProps);
+    if (!isEqual) {
+      debugger
+    }
+    return isEqual;
   }
 
   componentWillUnmount() {

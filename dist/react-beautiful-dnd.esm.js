@@ -1,6 +1,6 @@
 import _extends from '@babel/runtime-corejs2/helpers/esm/extends';
 import _inheritsLoose from '@babel/runtime-corejs2/helpers/esm/inheritsLoose';
-import React, { PureComponent, Component, Fragment } from 'react';
+import React, { PureComponent, Component as Component$1, Fragment } from 'react';
 import { compose, createStore, applyMiddleware, bindActionCreators } from 'redux';
 import invariant from 'tiny-invariant';
 import PropTypes from 'prop-types';
@@ -14,6 +14,7 @@ import rafSchd from 'raf-schd';
 import { connect } from 'react-redux';
 import _assertThisInitialized from '@babel/runtime-corejs2/helpers/esm/assertThisInitialized';
 import ReactDOM from 'react-dom';
+import equal from 'deep-equal';
 import _Number$isInteger from '@babel/runtime-corejs2/core-js/number/is-integer';
 
 var origin = {
@@ -6297,7 +6298,7 @@ var DraggableDimensionPublisher = function (_Component) {
   };
 
   return DraggableDimensionPublisher;
-}(Component);
+}(Component$1);
 
 DraggableDimensionPublisher.contextTypes = (_DraggableDimensionPu = {}, _DraggableDimensionPu[dimensionMarshalKey] = PropTypes.object.isRequired, _DraggableDimensionPu);
 
@@ -7609,7 +7610,7 @@ var DragHandle = function (_Component) {
   };
 
   return DragHandle;
-}(Component);
+}(Component$1);
 
 DragHandle.contextTypes = (_DragHandle$contextTy = {}, _DragHandle$contextTy[styleContextKey] = PropTypes.string.isRequired, _DragHandle$contextTy[canLiftContextKey] = PropTypes.func.isRequired, _DragHandle$contextTy);
 
@@ -7653,13 +7654,13 @@ var getShouldDraggingAnimate = function getShouldDraggingAnimate(dragging) {
   return dragging.mode === 'SNAP';
 };
 
-var Draggable = function (_PureComponent) {
-  _inheritsLoose(Draggable, _PureComponent);
+var Draggable = function (_Component) {
+  _inheritsLoose(Draggable, _Component);
 
   function Draggable(props, context) {
     var _this;
 
-    _this = _PureComponent.call(this, props, context) || this;
+    _this = _Component.call(this, props, context) || this;
     _this.callbacks = void 0;
     _this.styleContext = void 0;
     _this.ref = null;
@@ -7862,6 +7863,16 @@ var Draggable = function (_PureComponent) {
 
   var _proto = Draggable.prototype;
 
+  _proto.shouldComponentUpdate = function shouldComponentUpdate(nextProps) {
+    var isEqual = equal(this.props, nextProps);
+
+    if (!isEqual) {
+      debugger;
+    }
+
+    return isEqual;
+  };
+
   _proto.componentWillUnmount = function componentWillUnmount() {
     this.ref = null;
   };
@@ -7897,7 +7908,7 @@ var Draggable = function (_PureComponent) {
   };
 
   return Draggable;
-}(PureComponent);
+}(Component);
 
 Draggable.contextTypes = (_Draggable$contextTyp = {}, _Draggable$contextTyp[droppableIdKey] = PropTypes.string.isRequired, _Draggable$contextTyp[droppableTypeKey] = PropTypes.string.isRequired, _Draggable$contextTyp[styleContextKey] = PropTypes.string.isRequired, _Draggable$contextTyp);
 

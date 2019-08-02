@@ -155,7 +155,7 @@ export default class Droppable extends PureComponent<Props> {
       isDraggingOver,
       draggingOverWith,
     };
-    console.log('came in');
+
     return (
       <DroppableDimensionPublisher
         droppableId={droppableId}

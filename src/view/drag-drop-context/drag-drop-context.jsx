@@ -274,7 +274,6 @@ export default class DragDropContext extends React.PureComponent<Props> {
   getDraggableRef = (): ?HTMLElement => this.ref;
 
   render() {
-    console.log('came in');
     const ChildComponent = this.props.childComponent;
     return ChildComponent ? <ChildComponent setRef={this.setRef} {...this.props} /> : this.props.children(this.setRef);
   }

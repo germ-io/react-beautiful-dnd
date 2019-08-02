@@ -7584,7 +7584,6 @@
 	  };
 
 	  _proto.render = function render() {
-	    console.log('came in');
 	    var ChildComponent = this.props.childComponent;
 	    return ChildComponent ? React__default.createElement(ChildComponent, _extends({
 	      setRef: this.setRef
@@ -26774,7 +26773,6 @@
 	      isDraggingOver: isDraggingOver,
 	      draggingOverWith: draggingOverWith
 	    };
-	    console.log('came in');
 	    return React__default.createElement(DroppableDimensionPublisher, {
 	      droppableId: droppableId,
 	      type: type,
@@ -28471,13 +28469,13 @@
 	  return dragging.mode === 'SNAP';
 	};
 
-	var Draggable = function (_Component) {
-	  _inheritsLoose(Draggable, _Component);
+	var Draggable = function (_PureComponent) {
+	  _inheritsLoose(Draggable, _PureComponent);
 
 	  function Draggable(props, context) {
 	    var _this;
 
-	    _this = _Component.call(this, props, context) || this;
+	    _this = _PureComponent.call(this, props, context) || this;
 	    _this.callbacks = void 0;
 	    _this.styleContext = void 0;
 	    _this.ref = null;
@@ -28680,16 +28678,6 @@
 
 	  var _proto = Draggable.prototype;
 
-	  _proto.shouldComponentUpdate = function shouldComponentUpdate(nextProps) {
-	    var isEqual = deepEqual_1(this.props, nextProps);
-
-	    if (!isEqual) {
-	      debugger;
-	    }
-
-	    return isEqual;
-	  };
-
 	  _proto.componentWillUnmount = function componentWillUnmount() {
 	    this.ref = null;
 	  };
@@ -28705,7 +28693,6 @@
 	    var type = this.context[droppableTypeKey];
 	    var isDragging = Boolean(dragging);
 	    var isDropAnimating = Boolean(dragging && dragging.dropping);
-	    console.log('came in');
 	    return React__default.createElement(DraggableDimensionPublisher, {
 	      key: draggableId,
 	      draggableId: draggableId,
@@ -28725,7 +28712,7 @@
 	  };
 
 	  return Draggable;
-	}(React.Component);
+	}(React.PureComponent);
 
 	Draggable.contextTypes = (_Draggable$contextTyp = {}, _Draggable$contextTyp[droppableIdKey] = propTypes.string.isRequired, _Draggable$contextTyp[droppableTypeKey] = propTypes.string.isRequired, _Draggable$contextTyp[styleContextKey] = propTypes.string.isRequired, _Draggable$contextTyp);
 

@@ -14,7 +14,7 @@ import rafSchd from 'raf-schd';
 import { connect } from 'react-redux';
 import _assertThisInitialized from '@babel/runtime-corejs2/helpers/esm/assertThisInitialized';
 import ReactDOM from 'react-dom';
-import equal from 'deep-equal';
+import 'deep-equal';
 import _Number$isInteger from '@babel/runtime-corejs2/core-js/number/is-integer';
 
 var origin = {
@@ -5473,7 +5473,6 @@ var DragDropContext = function (_React$PureComponent) {
   };
 
   _proto.render = function render() {
-    console.log('came in');
     var ChildComponent = this.props.childComponent;
     return ChildComponent ? React.createElement(ChildComponent, _extends({
       setRef: this.setRef
@@ -6106,7 +6105,6 @@ var Droppable = function (_PureComponent) {
       isDraggingOver: isDraggingOver,
       draggingOverWith: draggingOverWith
     };
-    console.log('came in');
     return React.createElement(DroppableDimensionPublisher, {
       droppableId: droppableId,
       type: type,
@@ -7654,13 +7652,13 @@ var getShouldDraggingAnimate = function getShouldDraggingAnimate(dragging) {
   return dragging.mode === 'SNAP';
 };
 
-var Draggable = function (_Component) {
-  _inheritsLoose(Draggable, _Component);
+var Draggable = function (_PureComponent) {
+  _inheritsLoose(Draggable, _PureComponent);
 
   function Draggable(props, context) {
     var _this;
 
-    _this = _Component.call(this, props, context) || this;
+    _this = _PureComponent.call(this, props, context) || this;
     _this.callbacks = void 0;
     _this.styleContext = void 0;
     _this.ref = null;
@@ -7863,16 +7861,6 @@ var Draggable = function (_Component) {
 
   var _proto = Draggable.prototype;
 
-  _proto.shouldComponentUpdate = function shouldComponentUpdate(nextProps) {
-    var isEqual = equal(this.props, nextProps);
-
-    if (!isEqual) {
-      debugger;
-    }
-
-    return isEqual;
-  };
-
   _proto.componentWillUnmount = function componentWillUnmount() {
     this.ref = null;
   };
@@ -7888,7 +7876,6 @@ var Draggable = function (_Component) {
     var type = this.context[droppableTypeKey];
     var isDragging = Boolean(dragging);
     var isDropAnimating = Boolean(dragging && dragging.dropping);
-    console.log('came in');
     return React.createElement(DraggableDimensionPublisher, {
       key: draggableId,
       draggableId: draggableId,
@@ -7908,7 +7895,7 @@ var Draggable = function (_Component) {
   };
 
   return Draggable;
-}(Component);
+}(PureComponent);
 
 Draggable.contextTypes = (_Draggable$contextTyp = {}, _Draggable$contextTyp[droppableIdKey] = PropTypes.string.isRequired, _Draggable$contextTyp[droppableTypeKey] = PropTypes.string.isRequired, _Draggable$contextTyp[styleContextKey] = PropTypes.string.isRequired, _Draggable$contextTyp);
 

@@ -78,7 +78,7 @@ const getShouldDraggingAnimate = (dragging: DraggingMapProps): boolean => {
   return dragging.mode === 'SNAP';
 };
 
-export default class Draggable extends Component<Props> {
+export default class Draggable extends PureComponent<Props> {
   /* eslint-disable react/sort-comp */
   callbacks: DragHandleCallbacks;
   styleContext: string;
@@ -120,14 +120,6 @@ export default class Draggable extends Component<Props> {
     if (process.env.NODE_ENV !== 'production') {
       checkOwnProps(props);
     }
-  }
-
-  shouldComponentUpdate(nextProps) {
-    const isEqual = equal(this.props, nextProps);
-    if (!isEqual) {
-      debugger
-    }
-    return isEqual;
   }
 
   componentWillUnmount() {
@@ -351,7 +343,7 @@ export default class Draggable extends Component<Props> {
     const type: TypeId = this.context[droppableTypeKey];
     const isDragging: boolean = Boolean(dragging);
     const isDropAnimating: boolean = Boolean(dragging && dragging.dropping);
-    console.log('came in');
+
     return (
       <DraggableDimensionPublisher
         key={draggableId}

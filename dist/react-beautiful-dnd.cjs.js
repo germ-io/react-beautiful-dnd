@@ -21,7 +21,7 @@ var rafSchd = _interopDefault(require('raf-schd'));
 var reactRedux = require('react-redux');
 var _assertThisInitialized = _interopDefault(require('@babel/runtime-corejs2/helpers/assertThisInitialized'));
 var ReactDOM = _interopDefault(require('react-dom'));
-var equal = _interopDefault(require('deep-equal'));
+require('deep-equal');
 var _Number$isInteger = _interopDefault(require('@babel/runtime-corejs2/core-js/number/is-integer'));
 
 var origin = {
@@ -5480,7 +5480,6 @@ var DragDropContext = function (_React$PureComponent) {
   };
 
   _proto.render = function render() {
-    console.log('came in');
     var ChildComponent = this.props.childComponent;
     return ChildComponent ? React__default.createElement(ChildComponent, _extends({
       setRef: this.setRef
@@ -6113,7 +6112,6 @@ var Droppable = function (_PureComponent) {
       isDraggingOver: isDraggingOver,
       draggingOverWith: draggingOverWith
     };
-    console.log('came in');
     return React__default.createElement(DroppableDimensionPublisher, {
       droppableId: droppableId,
       type: type,
@@ -7661,13 +7659,13 @@ var getShouldDraggingAnimate = function getShouldDraggingAnimate(dragging) {
   return dragging.mode === 'SNAP';
 };
 
-var Draggable = function (_Component) {
-  _inheritsLoose(Draggable, _Component);
+var Draggable = function (_PureComponent) {
+  _inheritsLoose(Draggable, _PureComponent);
 
   function Draggable(props, context) {
     var _this;
 
-    _this = _Component.call(this, props, context) || this;
+    _this = _PureComponent.call(this, props, context) || this;
     _this.callbacks = void 0;
     _this.styleContext = void 0;
     _this.ref = null;
@@ -7870,16 +7868,6 @@ var Draggable = function (_Component) {
 
   var _proto = Draggable.prototype;
 
-  _proto.shouldComponentUpdate = function shouldComponentUpdate(nextProps) {
-    var isEqual = equal(this.props, nextProps);
-
-    if (!isEqual) {
-      debugger;
-    }
-
-    return isEqual;
-  };
-
   _proto.componentWillUnmount = function componentWillUnmount() {
     this.ref = null;
   };
@@ -7895,7 +7883,6 @@ var Draggable = function (_Component) {
     var type = this.context[droppableTypeKey];
     var isDragging = Boolean(dragging);
     var isDropAnimating = Boolean(dragging && dragging.dropping);
-    console.log('came in');
     return React__default.createElement(DraggableDimensionPublisher, {
       key: draggableId,
       draggableId: draggableId,
@@ -7915,7 +7902,7 @@ var Draggable = function (_Component) {
   };
 
   return Draggable;
-}(React.Component);
+}(React.PureComponent);
 
 Draggable.contextTypes = (_Draggable$contextTyp = {}, _Draggable$contextTyp[droppableIdKey] = PropTypes.string.isRequired, _Draggable$contextTyp[droppableTypeKey] = PropTypes.string.isRequired, _Draggable$contextTyp[styleContextKey] = PropTypes.string.isRequired, _Draggable$contextTyp);
 

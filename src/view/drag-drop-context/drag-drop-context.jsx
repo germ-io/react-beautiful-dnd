@@ -80,7 +80,7 @@ const printFatalDevError = (error: Error) => {
   console.error('raw', error);
 };
 
-export default class DragDropContext extends React.Component<Props> {
+export default class DragDropContext extends React.PureComponent<Props> {
   /* eslint-disable react/sort-comp */
   store: Store;
   dimensionMarshal: DimensionMarshal;
@@ -274,6 +274,8 @@ export default class DragDropContext extends React.Component<Props> {
   getDraggableRef = (): ?HTMLElement => this.ref;
 
   render() {
-    return this.props.children(this.setRef)
+    console.log('came in');
+    const ChildComponent = this.props.childComponent;
+    return ChildComponent ? <ChildComponent setRef={this.setRef} {...this.props} /> : this.props.children(this.setRef);
   }
 }

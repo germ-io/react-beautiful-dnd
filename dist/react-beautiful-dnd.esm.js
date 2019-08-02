@@ -5296,13 +5296,13 @@ var printFatalDevError = function printFatalDevError(error) {
   console.error('raw', error);
 };
 
-var DragDropContext = function (_React$Component) {
-  _inheritsLoose(DragDropContext, _React$Component);
+var DragDropContext = function (_React$PureComponent) {
+  _inheritsLoose(DragDropContext, _React$PureComponent);
 
   function DragDropContext(props, context) {
     var _this;
 
-    _this = _React$Component.call(this, props, context) || this;
+    _this = _React$PureComponent.call(this, props, context) || this;
     _this.store = void 0;
     _this.dimensionMarshal = void 0;
     _this.styleMarshal = void 0;
@@ -5472,11 +5472,15 @@ var DragDropContext = function (_React$Component) {
   };
 
   _proto.render = function render() {
-    return this.props.children(this.setRef);
+    console.log('came in');
+    var ChildComponent = this.props.childComponent;
+    return ChildComponent ? React.createElement(ChildComponent, _extends({
+      setRef: this.setRef
+    }, this.props)) : this.props.children(this.setRef);
   };
 
   return DragDropContext;
-}(React.Component);
+}(React.PureComponent);
 
 DragDropContext.childContextTypes = (_DragDropContext$chil = {}, _DragDropContext$chil[storeKey] = PropTypes.shape({
   dispatch: PropTypes.func.isRequired,
@@ -5844,7 +5848,7 @@ var DroppableDimensionPublisher = function (_React$Component) {
       !ref ? process.env.NODE_ENV !== "production" ? invariant(false, 'Cannot collect without a droppable ref') : invariant(false) : void 0;
       var env = getEnv(ref);
 
-      if (env.closestScrollable && !ReactDOM.findDOMNode(_assertThisInitialized(_assertThisInitialized(_this))).contains(env.closestScrollable)) {
+      if (env.closestScrollable && !ReactDOM.findDOMNode(_assertThisInitialized(_this)).contains(env.closestScrollable)) {
         env = _extends({}, env, {
           closestScrollable: null
         });
@@ -5983,13 +5987,13 @@ var checkOwnProps = (function (props) {
 
 var _Droppable$contextTyp, _Droppable$childConte;
 
-var Droppable = function (_Component) {
-  _inheritsLoose(Droppable, _Component);
+var Droppable = function (_PureComponent) {
+  _inheritsLoose(Droppable, _PureComponent);
 
   function Droppable(props, context) {
     var _this;
 
-    _this = _Component.call(this, props, context) || this;
+    _this = _PureComponent.call(this, props, context) || this;
     _this.styleContext = void 0;
     _this.ref = null;
     _this.placeholderRef = null;
@@ -6088,7 +6092,8 @@ var Droppable = function (_Component) {
         isCombineEnabled = _this$props.isCombineEnabled,
         ignoreContainerClipping = _this$props.ignoreContainerClipping,
         isDraggingOver = _this$props.isDraggingOver,
-        draggingOverWith = _this$props.draggingOverWith;
+        draggingOverWith = _this$props.draggingOverWith,
+        ChildComponent = _this$props.childComponent;
     var provided = {
       innerRef: this.setRef,
       placeholder: this.getPlaceholder(),
@@ -6100,6 +6105,7 @@ var Droppable = function (_Component) {
       isDraggingOver: isDraggingOver,
       draggingOverWith: draggingOverWith
     };
+    console.log('came in');
     return React.createElement(DroppableDimensionPublisher, {
       droppableId: droppableId,
       type: type,
@@ -6109,11 +6115,14 @@ var Droppable = function (_Component) {
       isCombineEnabled: isCombineEnabled,
       getDroppableRef: this.getDroppableRef,
       getPlaceholderRef: this.getPlaceholderRef
-    }, children(provided, snapshot));
+    }, ChildComponent ? React.createElement(ChildComponent, _extends({
+      provided: provided,
+      snapshot: snapshot
+    }, this.props)) : children(provided, snapshot));
   };
 
   return Droppable;
-}(Component);
+}(PureComponent);
 
 Droppable.contextTypes = (_Droppable$contextTyp = {}, _Droppable$contextTyp[styleContextKey] = PropTypes.string.isRequired, _Droppable$contextTyp);
 Droppable.childContextTypes = (_Droppable$childConte = {}, _Droppable$childConte[droppableIdKey] = PropTypes.string.isRequired, _Droppable$childConte[droppableTypeKey] = PropTypes.string.isRequired, _Droppable$childConte);
@@ -7644,13 +7653,13 @@ var getShouldDraggingAnimate = function getShouldDraggingAnimate(dragging) {
   return dragging.mode === 'SNAP';
 };
 
-var Draggable = function (_Component) {
-  _inheritsLoose(Draggable, _Component);
+var Draggable = function (_PureComponent) {
+  _inheritsLoose(Draggable, _PureComponent);
 
   function Draggable(props, context) {
     var _this;
 
-    _this = _Component.call(this, props, context) || this;
+    _this = _PureComponent.call(this, props, context) || this;
     _this.callbacks = void 0;
     _this.styleContext = void 0;
     _this.ref = null;
@@ -7783,19 +7792,35 @@ var Draggable = function (_Component) {
       var dragging = _this.props.dragging;
       var secondary = _this.props.secondary;
       var children = _this.props.children;
+      var ChildComponent = _this.props.childComponent;
 
       if (dragging) {
+        var _provided = _this.getDraggingProvided(dragging, dragHandleProps);
+
+        var _snapshot = _this.getDraggingSnapshot(dragging);
+
         var _child = children(_this.getDraggingProvided(dragging, dragHandleProps), _this.getDraggingSnapshot(dragging));
 
         var placeholder = React.createElement(Placeholder, {
           placeholder: dragging.dimension.placeholder
         });
-        return React.createElement(Fragment, null, _child, placeholder);
+        return React.createElement(Fragment, null, ChildComponent ? React.createElement(ChildComponent, _extends({
+          provided: _provided,
+          snapshot: _snapshot
+        }, _this.props)) : _child, placeholder);
       }
 
       !secondary ? process.env.NODE_ENV !== "production" ? invariant(false, 'If no DraggingMapProps are provided, then SecondaryMapProps are required') : invariant(false) : void 0;
-      var child = children(_this.getSecondaryProvided(secondary, dragHandleProps), _this.getSecondarySnapshot(secondary));
-      return React.createElement(Fragment, null, child);
+
+      var provided = _this.getSecondaryProvided(secondary, dragHandleProps);
+
+      var snapshot = _this.getSecondarySnapshot(secondary);
+
+      var child = children(provided, snapshot);
+      return React.createElement(Fragment, null, ChildComponent ? React.createElement(ChildComponent, _extends({
+        provided: provided,
+        snapshot: snapshot
+      }, _this.props)) : child);
     };
 
     var callbacks = {
@@ -7852,6 +7877,7 @@ var Draggable = function (_Component) {
     var type = this.context[droppableTypeKey];
     var isDragging = Boolean(dragging);
     var isDropAnimating = Boolean(dragging && dragging.dropping);
+    console.log('came in');
     return React.createElement(DraggableDimensionPublisher, {
       key: draggableId,
       draggableId: draggableId,
@@ -7871,7 +7897,7 @@ var Draggable = function (_Component) {
   };
 
   return Draggable;
-}(Component);
+}(PureComponent);
 
 Draggable.contextTypes = (_Draggable$contextTyp = {}, _Draggable$contextTyp[droppableIdKey] = PropTypes.string.isRequired, _Draggable$contextTyp[droppableTypeKey] = PropTypes.string.isRequired, _Draggable$contextTyp[styleContextKey] = PropTypes.string.isRequired, _Draggable$contextTyp);
 

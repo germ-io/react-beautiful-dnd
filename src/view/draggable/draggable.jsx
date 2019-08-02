@@ -1,5 +1,5 @@
 // @flow
-import React, { Component, Fragment, type Node } from 'react';
+import React, { PureComponent, Fragment, type Node } from 'react';
 import { type Position, type BoxModel } from 'css-box-model';
 import PropTypes from 'prop-types';
 import memoizeOne from 'memoize-one';
@@ -77,7 +77,7 @@ const getShouldDraggingAnimate = (dragging: DraggingMapProps): boolean => {
   return dragging.mode === 'SNAP';
 };
 
-export default class Draggable extends Component<Props> {
+export default class Draggable extends PureComponent<Props> {
   /* eslint-disable react/sort-comp */
   callbacks: DragHandleCallbacks;
   styleContext: string;
@@ -294,8 +294,11 @@ export default class Draggable extends Component<Props> {
     const dragging: ?DraggingMapProps = this.props.dragging;
     const secondary: ?SecondaryMapProps = this.props.secondary;
     const children: ChildrenFn = this.props.children;
+    const ChildComponent = this.props.childComponent;
 
     if (dragging) {
+      const provided = this.getDraggingProvided(dragging, dragHandleProps);
+      const snapshot = this.getDraggingSnapshot(dragging);
       const child: ?Node = children(
         this.getDraggingProvided(dragging, dragHandleProps),
         this.getDraggingSnapshot(dragging),
@@ -307,7 +310,7 @@ export default class Draggable extends Component<Props> {
 
       return (
         <Fragment>
-          {child}
+          {ChildComponent ? <ChildComponent provided={provided} snapshot={snapshot} {...this.props} /> : child}
           {placeholder}
         </Fragment>
       );
@@ -318,13 +321,19 @@ export default class Draggable extends Component<Props> {
       'If no DraggingMapProps are provided, then SecondaryMapProps are required',
     );
 
+    const provided = this.getSecondaryProvided(secondary, dragHandleProps);
+    const snapshot = this.getSecondarySnapshot(secondary);
     const child: ?Node = children(
-      this.getSecondaryProvided(secondary, dragHandleProps),
-      this.getSecondarySnapshot(secondary),
+      provided,
+      snapshot,
     );
 
     // still wrapping in fragment to avoid reparenting
-    return <Fragment>{child}</Fragment>;
+    return (
+      <Fragment>
+        {ChildComponent ? <ChildComponent provided={provided} snapshot={snapshot} {...this.props} /> : child}
+      </Fragment>
+    );
   };
 
   render() {
@@ -339,7 +348,7 @@ export default class Draggable extends Component<Props> {
     const type: TypeId = this.context[droppableTypeKey];
     const isDragging: boolean = Boolean(dragging);
     const isDropAnimating: boolean = Boolean(dragging && dragging.dropping);
-
+    console.log('came in');
     return (
       <DraggableDimensionPublisher
         key={draggableId}

@@ -1,5 +1,5 @@
 // @flow
-import React, { Component } from 'react';
+import React, { PureComponent } from 'react';
 import PropTypes from 'prop-types';
 import DroppableDimensionPublisher from '../droppable-dimension-publisher';
 import type { Props, Provided, StateSnapshot } from './droppable-types';
@@ -18,7 +18,7 @@ type Context = {
   [string]: DroppableId | TypeId,
 };
 
-export default class Droppable extends Component<Props> {
+export default class Droppable extends PureComponent<Props> {
   /* eslint-disable react/sort-comp */
   styleContext: string;
   ref: ?HTMLElement = null;
@@ -142,6 +142,7 @@ export default class Droppable extends Component<Props> {
       ignoreContainerClipping,
       isDraggingOver,
       draggingOverWith,
+      childComponent: ChildComponent,
     } = this.props;
     const provided: Provided = {
       innerRef: this.setRef,
@@ -154,7 +155,7 @@ export default class Droppable extends Component<Props> {
       isDraggingOver,
       draggingOverWith,
     };
-
+    console.log('came in');
     return (
       <DroppableDimensionPublisher
         droppableId={droppableId}
@@ -166,7 +167,7 @@ export default class Droppable extends Component<Props> {
         getDroppableRef={this.getDroppableRef}
         getPlaceholderRef={this.getPlaceholderRef}
       >
-        {children(provided, snapshot)}
+        {ChildComponent ? <ChildComponent provided={provided} snapshot={snapshot} {...this.props} /> : children(provided, snapshot)}
       </DroppableDimensionPublisher>
     );
   }

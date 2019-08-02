@@ -299,10 +299,7 @@ export default class Draggable extends PureComponent<Props> {
     if (dragging) {
       const provided = this.getDraggingProvided(dragging, dragHandleProps);
       const snapshot = this.getDraggingSnapshot(dragging);
-      const child: ?Node = children(
-        this.getDraggingProvided(dragging, dragHandleProps),
-        this.getDraggingSnapshot(dragging),
-      );
+      const child: ?Node = children ? children(provided, snapshot) : null;
 
       const placeholder: Node = (
         <Placeholder placeholder={dragging.dimension.placeholder} />
@@ -323,10 +320,7 @@ export default class Draggable extends PureComponent<Props> {
 
     const provided = this.getSecondaryProvided(secondary, dragHandleProps);
     const snapshot = this.getSecondarySnapshot(secondary);
-    const child: ?Node = children(
-      provided,
-      snapshot,
-    );
+    const child: ?Node = children ? children(provided, snapshot) : null;
 
     // still wrapping in fragment to avoid reparenting
     return (

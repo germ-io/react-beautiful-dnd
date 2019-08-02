@@ -28484,7 +28484,7 @@
 
 	        var _snapshot = _this.getDraggingSnapshot(dragging);
 
-	        var _child = children(_this.getDraggingProvided(dragging, dragHandleProps), _this.getDraggingSnapshot(dragging));
+	        var _child = children ? children(_provided, _snapshot) : null;
 
 	        var placeholder = React__default.createElement(Placeholder, {
 	          placeholder: dragging.dimension.placeholder
@@ -28501,7 +28501,7 @@
 
 	      var snapshot = _this.getSecondarySnapshot(secondary);
 
-	      var child = children(provided, snapshot);
+	      var child = children ? children(provided, snapshot) : null;
 	      return React__default.createElement(React.Fragment, null, ChildComponent ? React__default.createElement(ChildComponent, _extends({
 	        provided: provided,
 	        snapshot: snapshot

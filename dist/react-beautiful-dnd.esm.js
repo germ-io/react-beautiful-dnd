@@ -1,6 +1,6 @@
 import _extends from '@babel/runtime-corejs2/helpers/esm/extends';
 import _inheritsLoose from '@babel/runtime-corejs2/helpers/esm/inheritsLoose';
-import React, { PureComponent, Component as Component$1, Fragment } from 'react';
+import React, { PureComponent, Component, Fragment } from 'react';
 import { compose, createStore, applyMiddleware, bindActionCreators } from 'redux';
 import invariant from 'tiny-invariant';
 import PropTypes from 'prop-types';
@@ -6298,7 +6298,7 @@ var DraggableDimensionPublisher = function (_Component) {
   };
 
   return DraggableDimensionPublisher;
-}(Component$1);
+}(Component);
 
 DraggableDimensionPublisher.contextTypes = (_DraggableDimensionPu = {}, _DraggableDimensionPu[dimensionMarshalKey] = PropTypes.object.isRequired, _DraggableDimensionPu);
 
@@ -7610,7 +7610,7 @@ var DragHandle = function (_Component) {
   };
 
   return DragHandle;
-}(Component$1);
+}(Component);
 
 DragHandle.contextTypes = (_DragHandle$contextTy = {}, _DragHandle$contextTy[styleContextKey] = PropTypes.string.isRequired, _DragHandle$contextTy[canLiftContextKey] = PropTypes.func.isRequired, _DragHandle$contextTy);
 

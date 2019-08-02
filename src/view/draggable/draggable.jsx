@@ -1,5 +1,5 @@
 // @flow
-import React, { PureComponent, Fragment, type Node } from 'react';
+import React, { Component, PureComponent, Fragment, type Node } from 'react';
 import { type Position, type BoxModel } from 'css-box-model';
 import PropTypes from 'prop-types';
 import memoizeOne from 'memoize-one';

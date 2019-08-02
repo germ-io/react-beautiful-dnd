@@ -7915,7 +7915,7 @@ var Draggable = function (_Component) {
   };
 
   return Draggable;
-}(Component);
+}(React.Component);
 
 Draggable.contextTypes = (_Draggable$contextTyp = {}, _Draggable$contextTyp[droppableIdKey] = PropTypes.string.isRequired, _Draggable$contextTyp[droppableTypeKey] = PropTypes.string.isRequired, _Draggable$contextTyp[styleContextKey] = PropTypes.string.isRequired, _Draggable$contextTyp);
 

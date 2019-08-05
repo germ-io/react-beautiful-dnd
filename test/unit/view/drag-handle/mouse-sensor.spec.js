@@ -1,10 +1,7 @@
 // @flow
 import { type Position } from 'css-box-model';
 import { type ReactWrapper } from 'enzyme';
-import {
-  canLiftContextKey,
-  styleContextKey,
-} from '../../../../src/view/context-keys';
+import { canLiftKey, styleKey } from '../../../../src/view/context-keys';
 import { sloppyClickThreshold } from '../../../../src/view/drag-handle/util/is-sloppy-click-threshold-exceeded';
 import * as keyCodes from '../../../../src/view/key-codes';
 import getWindowScroll from '../../../../src/view/window/get-window-scroll';
@@ -45,7 +42,7 @@ import type { Callbacks } from '../../../../src/view/drag-handle/drag-handle-typ
 const origin: Position = { x: 0, y: 0 };
 
 let callbacks: Callbacks;
-let wrapper: ReactWrapper;
+let wrapper: ReactWrapper<*>;
 
 beforeAll(() => {
   requestAnimationFrame.reset();
@@ -206,8 +203,8 @@ describe('initiation', () => {
   it('should not start a drag if the state says that a drag cannot start', () => {
     const customCallbacks: Callbacks = getStubCallbacks();
     const customContext = {
-      [styleContextKey]: 'hello',
-      [canLiftContextKey]: () => false,
+      [styleKey]: 'hello',
+      [canLiftKey]: () => false,
     };
     const customWrapper = getWrapper(customCallbacks, customContext);
     const mock: MockEvent = createMockEvent();
@@ -1353,6 +1350,31 @@ describe('webkit force press', () => {
         callbacksCalled(callbacks)({
           onLift: 1,
           onCancel: 1,
+        }),
+      ).toBe(true);
+    });
+
+    it('should not cancel a drag if force press is not being respected', () => {
+      // arrange
+      const shouldRespectForceTouch: boolean = false;
+      const customWrapper = getWrapper(
+        callbacks,
+        undefined,
+        shouldRespectForceTouch,
+      );
+
+      // start the drag
+      mouseDown(customWrapper);
+      windowMouseMove({ x: 0, y: sloppyClickThreshold });
+
+      // will not cancel the drag
+      windowMouseForceChange(mouseForcePressThreshold);
+
+      expect(
+        callbacksCalled(callbacks)({
+          onLift: 1,
+          // no cancel called
+          onCancel: 0,
         }),
       ).toBe(true);
     });

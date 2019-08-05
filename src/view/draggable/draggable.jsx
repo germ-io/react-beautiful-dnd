@@ -162,7 +162,13 @@ export default class Draggable extends React.PureComponent<Props> {
     const snapshot = mapped.snapshot;
     const ChildComponent = this.props.childComponent;
     if (ChildComponent) {
-      <ChildComponent provided={provided} snapshot={snapshot} {...this.props} />
+      return (
+        <ChildComponent
+          provided={provided}
+          snapshot={snapshot}
+          {...this.props}
+        />
+      );
     }
     return children(this.getProvided(mapped, dragHandleProps), mapped.snapshot);
   };

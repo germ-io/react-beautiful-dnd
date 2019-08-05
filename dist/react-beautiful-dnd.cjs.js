@@ -8169,7 +8169,7 @@ var Draggable = function (_React$PureComponent) {
       var ChildComponent = _this.props.childComponent;
 
       if (ChildComponent) {
-        React__default.createElement(ChildComponent, _extends({
+        return React__default.createElement(ChildComponent, _extends({
           provided: provided,
           snapshot: snapshot
         }, _this.props));
